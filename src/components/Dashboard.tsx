@@ -9,6 +9,10 @@ import {
   ChevronDown,
   FileText,
   UserPlus,
+  Target,
+  TrendingUp,
+  AlertTriangle,
+  GraduationCap,
 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { RadarChart } from './RadarChart';
@@ -166,39 +170,108 @@ export function Dashboard() {
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* Role Profile Header */}
         <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-          <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
-            <Avatar
-              name={profile.role.title}
-              roleClass={profile.role.class}
-              size="lg"
-              motivations={profile.motivations}
-              painPoints={profile.painPoints}
-            />
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="px-2 py-0.5 bg-sats-purple/10 text-sats-purple text-xs font-medium rounded">
-                  {profile.role.class}
-                </span>
-                <span className="text-gray-400">|</span>
-                <span className="text-sm text-gray-500">{profile.role.level}</span>
-              </div>
-              <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
-                {profile.role.title}
-              </h2>
-              <div className="flex flex-wrap gap-2">
-                {profile.academicBackground.certifications.map((cert) => (
-                  <span
-                    key={cert}
-                    className="px-2 py-1 bg-sats-blue/10 text-sats-blue text-xs font-medium rounded"
-                  >
-                    {cert}
-                  </span>
-                ))}
+          <div className="flex flex-col lg:flex-row items-start gap-6">
+            <div className="flex items-start gap-4">
+              <Avatar
+                name={profile.role.title}
+                roleClass={profile.role.class}
+                size="lg"
+                motivations={profile.motivations}
+                painPoints={profile.painPoints}
+              />
+              <div className="flex-1">
+                {/* Seniority (formerly Level) */}
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs text-gray-500 uppercase tracking-wide">Seniority:</span>
+                  <span className="text-sm font-medium text-gray-700">{profile.role.level}</span>
+                </div>
+                <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">
+                  {profile.role.title}
+                </h2>
+
+                {/* Minimum Degree */}
+                {profile.academicBackground.minDegree && (
+                  <div className="flex items-center gap-2 mb-2">
+                    <GraduationCap className="w-4 h-4 text-sats-navy" />
+                    <span className="text-sm text-gray-600">
+                      <span className="font-medium">Min. Education:</span> {profile.academicBackground.minDegree}
+                    </span>
+                  </div>
+                )}
+
+                {/* Certifications */}
+                {profile.academicBackground.certifications.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {profile.academicBackground.certifications.map((cert) => (
+                      <span
+                        key={cert}
+                        className="px-2 py-1 bg-sats-blue/10 text-sats-blue text-xs font-medium rounded"
+                      >
+                        {cert}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
+
+            {/* Objective (formerly Class) - with multi-line support */}
+            <div className="flex-1 lg:max-w-md">
+              <div className="bg-sats-purple/5 border border-sats-purple/20 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Target className="w-4 h-4 text-sats-purple" />
+                  <span className="text-xs font-semibold text-sats-purple uppercase tracking-wide">
+                    Objective
+                  </span>
+                </div>
+                <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">
+                  {profile.role.class}
+                </p>
+              </div>
+            </div>
+
             {selectedCandidate && (
-              <div className="md:ml-auto">
+              <div className="lg:ml-auto">
                 <MatchScore score={selectedCandidate.matchScore} size="md" />
+              </div>
+            )}
+          </div>
+
+          {/* Motivations and Pain Points */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 pt-6 border-t border-gray-100">
+            {/* Motivations */}
+            {profile.motivations.length > 0 && (
+              <div className="bg-sats-green/5 border border-sats-green/20 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <TrendingUp className="w-4 h-4 text-sats-green" />
+                  <span className="text-sm font-semibold text-sats-green">Motivations</span>
+                </div>
+                <ul className="space-y-1.5">
+                  {profile.motivations.map((motivation, index) => (
+                    <li key={index} className="flex items-start gap-2 text-sm text-gray-600">
+                      <span className="text-sats-green mt-0.5">+</span>
+                      <span>{motivation}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Pain Points */}
+            {profile.painPoints.length > 0 && (
+              <div className="bg-sats-red/5 border border-sats-red/20 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertTriangle className="w-4 h-4 text-sats-red" />
+                  <span className="text-sm font-semibold text-sats-red">Pain Points</span>
+                </div>
+                <ul className="space-y-1.5">
+                  {profile.painPoints.map((painPoint, index) => (
+                    <li key={index} className="flex items-start gap-2 text-sm text-gray-600">
+                      <span className="text-sats-red mt-0.5">!</span>
+                      <span>{painPoint}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>
@@ -217,7 +290,7 @@ export function Dashboard() {
               <div className="flex items-center gap-2">
                 <ChartRadarIcon className="w-5 h-5 text-sats-blue" />
                 <h3 className="text-lg font-semibold text-gray-900">
-                  Competency Stats
+                  Attribute Stats
                 </h3>
               </div>
               <ChevronDown

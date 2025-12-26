@@ -167,7 +167,7 @@ export function CandidateCard({
       {/* Quick stats */}
       <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100">
         <div className="text-center p-2 bg-gray-50 rounded">
-          <div className="text-xs text-gray-500">Competencies</div>
+          <div className="text-xs text-gray-500">Attributes</div>
           <div className="font-semibold text-sats-blue">
             {candidate.matchScore.breakdown.competencies}%
           </div>

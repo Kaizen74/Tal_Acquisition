@@ -16,6 +16,7 @@ interface RadarChartProps {
   candidateName?: string;
 }
 
+// Labels displayed as "Attributes" instead of "Competencies"
 const statLabels: Record<keyof CompetencyStats, string> = {
   problemSolving: 'Problem Solving',
   stakeholderManagement: 'Stakeholder Mgmt',

@@ -117,7 +117,7 @@ export function MatchScore({
           {expanded && (
             <div className="mt-2 space-y-2 bg-gray-50 rounded-lg p-3">
               <BreakdownBar
-                label="Competencies"
+                label="Attributes"
                 value={score.breakdown.competencies}
                 weight="40%"
               />
