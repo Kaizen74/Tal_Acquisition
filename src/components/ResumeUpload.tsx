@@ -9,9 +9,12 @@ import {
   Loader2,
   User,
   Trash2,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { parseMultipleResumes } from '../utils/parseResume';
+import { parseMultipleResumesWithClaude } from '../utils/claudeResumeParser';
+import { ApiKeyConfig } from './ApiKeyConfig';
 import type { CandidateProfile, SuccessProfile } from '../types';
 
 interface ResumeUploadProps {
@@ -34,6 +37,11 @@ export function ResumeUpload({
 }: ResumeUploadProps) {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [claudeApiKey, setClaudeApiKey] = useState<string | null>(null);
+
+  const handleApiKeyChange = useCallback((apiKey: string | null) => {
+    setClaudeApiKey(apiKey);
+  }, []);
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
@@ -46,12 +54,16 @@ export function ResumeUpload({
       setUploadedFiles((prev) => [...prev, ...newFiles]);
       setIsProcessing(true);
 
-      // Process each file
-      const results = await parseMultipleResumes(acceptedFiles, {
+      // Process each file using Claude API if available, otherwise fallback to basic parsing
+      const profileContext = {
         role: successProfile.role,
         requiredExperiences: successProfile.requiredExperiences,
         toolbox: successProfile.toolbox,
-      });
+      };
+
+      const results = claudeApiKey
+        ? await parseMultipleResumesWithClaude(acceptedFiles, claudeApiKey, profileContext)
+        : await parseMultipleResumes(acceptedFiles, profileContext);
 
       // Update file statuses and candidates
       setUploadedFiles((prev) => {
@@ -92,7 +104,7 @@ export function ResumeUpload({
 
       setIsProcessing(false);
     },
-    [successProfile, onCandidatesLoaded, existingCandidates]
+    [successProfile, onCandidatesLoaded, existingCandidates, claudeApiKey]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -153,6 +165,9 @@ export function ResumeUpload({
         )}
       </div>
 
+      {/* Claude API Configuration */}
+      <ApiKeyConfig onApiKeyChange={handleApiKeyChange} />
+
       {/* Dropzone */}
       <div
         {...getRootProps()}
@@ -169,11 +184,19 @@ export function ResumeUpload({
         {isProcessing ? (
           <>
             <Loader2 className="w-12 h-12 mx-auto mb-4 text-sats-purple animate-spin" />
-            <p className="text-gray-600">Processing resumes...</p>
+            <p className="text-gray-600">
+              {claudeApiKey ? 'Processing resumes with Claude AI...' : 'Processing resumes...'}
+            </p>
           </>
         ) : (
           <>
-            <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+            {claudeApiKey ? (
+              <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gradient-to-br from-sats-purple to-sats-blue flex items-center justify-center">
+                <Sparkles className="w-6 h-6 text-white" />
+              </div>
+            ) : (
+              <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+            )}
             <p className="text-gray-600 mb-2">
               {isDragActive
                 ? 'Drop the PDF files here...'
@@ -182,6 +205,12 @@ export function ResumeUpload({
             <p className="text-sm text-gray-400">
               or click to select files (multiple files supported)
             </p>
+            {claudeApiKey && (
+              <p className="text-xs text-sats-purple mt-2 flex items-center justify-center gap-1">
+                <Sparkles className="w-3 h-3" />
+                Claude AI enhanced parsing enabled
+              </p>
+            )}
           </>
         )}
       </div>
@@ -294,6 +323,11 @@ export function ResumeUpload({
           <li>• Standard resume formats work best</li>
           <li>• Include skills, experience, and education sections</li>
           <li>• Multiple files can be uploaded at once</li>
+          {claudeApiKey && (
+            <li className="text-sats-purple font-medium">
+              • Claude AI will extract attributes, experiences, and skill proficiencies with higher accuracy
+            </li>
+          )}
         </ul>
       </div>
     </div>

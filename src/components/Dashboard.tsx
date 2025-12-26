@@ -353,7 +353,7 @@ export function Dashboard() {
           </section>
         </div>
 
-        {/* Skill Tree */}
+        {/* Skill Proficiency (Tools) */}
         <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
           <button
             onClick={() =>
@@ -364,7 +364,7 @@ export function Dashboard() {
             <div className="flex items-center gap-2">
               <TreeDeciduous className="w-5 h-5 text-sats-green" />
               <h3 className="text-lg font-semibold text-gray-900">
-                Skill Tree Inventory
+                Skill Proficiency (Tools)
               </h3>
             </div>
             <ChevronDown
