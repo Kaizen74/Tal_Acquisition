@@ -7,6 +7,8 @@ import {
   Users,
   Upload,
   ChevronDown,
+  FileText,
+  UserPlus,
 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { RadarChart } from './RadarChart';
@@ -15,6 +17,7 @@ import { SkillTree } from './SkillTree';
 import { MatchScore } from './MatchScore';
 import { CandidateCard } from './CandidateCard';
 import { FileUpload } from './FileUpload';
+import { ResumeUpload } from './ResumeUpload';
 import { exampleProfile } from '../data/successProfile';
 import { candidateProfiles as initialCandidates } from '../data/candidateProfiles';
 import { calculateMatchScore } from '../utils/calculateMatch';
@@ -28,6 +31,7 @@ export function Dashboard() {
     new Set([0])
   );
   const [showUpload, setShowUpload] = useState(false);
+  const [uploadTab, setUploadTab] = useState<'profile' | 'resumes'>('resumes');
   const [activeSection, setActiveSection] = useState<string | null>(null);
 
   // Calculate match scores for all candidates
@@ -63,6 +67,15 @@ export function Dashboard() {
   const handleProfileLoaded = (newProfile: SuccessProfile) => {
     setProfile(newProfile);
     setShowUpload(false);
+  };
+
+  const handleCandidatesLoaded = (newCandidates: CandidateProfile[]) => {
+    // Recalculate match scores for new candidates
+    const updatedCandidates = newCandidates.map((candidate) => ({
+      ...candidate,
+      matchScore: calculateMatchScore(profile, candidate),
+    }));
+    setCandidates(updatedCandidates);
   };
 
   return (
@@ -104,10 +117,47 @@ export function Dashboard() {
       {showUpload && (
         <div className="bg-white border-b border-gray-200 py-6 px-4">
           <div className="max-w-7xl mx-auto">
-            <FileUpload
-              onProfileLoaded={handleProfileLoaded}
-              currentProfile={profile}
-            />
+            {/* Upload tabs */}
+            <div className="flex border-b border-gray-200 mb-6">
+              <button
+                onClick={() => setUploadTab('resumes')}
+                className={cn(
+                  'flex items-center gap-2 px-4 py-3 border-b-2 font-medium text-sm transition-colors',
+                  uploadTab === 'resumes'
+                    ? 'border-sats-purple text-sats-purple'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                )}
+              >
+                <UserPlus className="w-4 h-4" />
+                Upload Resumes (PDF)
+              </button>
+              <button
+                onClick={() => setUploadTab('profile')}
+                className={cn(
+                  'flex items-center gap-2 px-4 py-3 border-b-2 font-medium text-sm transition-colors',
+                  uploadTab === 'profile'
+                    ? 'border-sats-blue text-sats-blue'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                )}
+              >
+                <FileText className="w-4 h-4" />
+                Upload Success Profile (CSV)
+              </button>
+            </div>
+
+            {/* Tab content */}
+            {uploadTab === 'profile' ? (
+              <FileUpload
+                onProfileLoaded={handleProfileLoaded}
+                currentProfile={profile}
+              />
+            ) : (
+              <ResumeUpload
+                successProfile={profile}
+                onCandidatesLoaded={handleCandidatesLoaded}
+                existingCandidates={candidates}
+              />
+            )}
           </div>
         </div>
       )}
