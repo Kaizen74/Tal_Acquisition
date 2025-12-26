@@ -21,17 +21,18 @@ export function parseProfileCSV(csvContent: string): SuccessProfile | null {
 
   try {
     // Parse role information (first row)
+    // Support both new (seniority, objective) and old (level, class) column names
     const roleRow = data.find((row) => row.section === 'role');
     const role = roleRow
       ? {
           title: roleRow.value || '',
-          level: roleRow.level || '',
-          class: roleRow.class || '',
+          level: roleRow.seniority || roleRow.level || '',
+          class: roleRow.objective || roleRow.class || '',
         }
       : { title: '', level: '', class: '' };
 
-    // Parse competency stats
-    const statsRows = data.filter((row) => row.section === 'competency');
+    // Parse attribute stats (also supports old 'competency' section name)
+    const statsRows = data.filter((row) => row.section === 'attribute' || row.section === 'competency');
     const competencyStats: CompetencyStats = {
       problemSolving: 0,
       stakeholderManagement: 0,
@@ -156,7 +157,7 @@ export function validateProfileData(profile: SuccessProfile): string[] {
 
   const stats = Object.values(profile.competencyStats);
   if (stats.some((s) => s < 0 || s > 100)) {
-    errors.push('Competency stats must be between 0 and 100');
+    errors.push('Attribute stats must be between 0 and 100');
   }
 
   if (profile.requiredExperiences.length === 0) {
