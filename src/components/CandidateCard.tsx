@@ -14,6 +14,7 @@ interface CandidateCardProps {
   candidate: CandidateProfile;
   successProfile: SuccessProfile;
   isSelected: boolean;
+  selectionColor?: string;
   onToggleSelect: () => void;
 }
 
@@ -44,6 +45,7 @@ export function CandidateCard({
   candidate,
   successProfile,
   isSelected,
+  selectionColor,
   onToggleSelect,
 }: CandidateCardProps) {
   const data = (
@@ -55,15 +57,28 @@ export function CandidateCard({
     fullMark: 100,
   }));
 
+  // Use selection color for border when selected
+  const borderStyle = isSelected && selectionColor
+    ? { borderColor: selectionColor, boxShadow: `0 10px 15px -3px ${selectionColor}33` }
+    : {};
+
   return (
     <div
       className={cn(
-        'bg-white rounded-xl border-2 p-4 transition-all duration-200',
+        'bg-white rounded-xl border-2 p-4 transition-all duration-200 relative',
         isSelected
-          ? 'border-sats-blue shadow-lg shadow-sats-blue/20'
+          ? 'shadow-lg'
           : 'border-gray-200 hover:border-gray-300'
       )}
+      style={borderStyle}
     >
+      {/* Color indicator bar */}
+      {isSelected && selectionColor && (
+        <div
+          className="absolute top-0 left-0 right-0 h-1 rounded-t-xl"
+          style={{ backgroundColor: selectionColor }}
+        />
+      )}
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
@@ -88,9 +103,10 @@ export function CandidateCard({
           className={cn(
             'p-2 rounded-lg transition-colors',
             isSelected
-              ? 'bg-sats-blue text-white'
+              ? 'text-white'
               : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
           )}
+          style={isSelected && selectionColor ? { backgroundColor: selectionColor } : {}}
           title={isSelected ? 'Hide from comparison' : 'Show in comparison'}
         >
           {isSelected ? (
@@ -127,8 +143,8 @@ export function CandidateCard({
             <Radar
               name="Candidate"
               dataKey="candidate"
-              stroke="#FFA62B"
-              fill="#FFA62B"
+              stroke={selectionColor || '#FFA62B'}
+              fill={selectionColor || '#FFA62B'}
               fillOpacity={0.3}
               strokeWidth={2}
             />

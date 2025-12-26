@@ -38,6 +38,15 @@ export function Dashboard() {
   const [uploadTab, setUploadTab] = useState<'profile' | 'resumes'>('resumes');
   const [activeSection, setActiveSection] = useState<string | null>(null);
 
+  // Colors for candidates (matching RadarChart)
+  const candidateColors = [
+    '#FFA62B',  // Orange
+    '#EE2536',  // Red
+    '#50284F',  // Purple
+    '#22C55E',  // Green
+    '#3B82F6',  // Blue
+  ];
+
   // Calculate match scores for all candidates
   useEffect(() => {
     const updatedCandidates = candidates.map((candidate) => ({
@@ -47,14 +56,33 @@ export function Dashboard() {
     setCandidates(updatedCandidates);
   }, [profile]);
 
-  // Get selected candidate for overlay
-  const selectedCandidate = useMemo(() => {
+  // Get all selected candidates for radar chart overlay
+  const selectedCandidatesData = useMemo(() => {
+    const indices = Array.from(selectedCandidates).sort((a, b) => a - b);
+    return indices.map((index, i) => ({
+      name: candidates[index]?.personalInfo.name || 'Unknown',
+      stats: candidates[index]?.competencyStats,
+      color: candidateColors[i % candidateColors.length],
+      index,
+    })).filter(c => c.stats);
+  }, [selectedCandidates, candidates]);
+
+  // Get first selected candidate for other displays
+  const primarySelectedCandidate = useMemo(() => {
     const indices = Array.from(selectedCandidates);
-    if (indices.length === 1) {
+    if (indices.length >= 1) {
       return candidates[indices[0]];
     }
     return null;
   }, [selectedCandidates, candidates]);
+
+  // Get color for a specific candidate index
+  const getCandidateColor = (candidateIndex: number): string | undefined => {
+    const selectedIndices = Array.from(selectedCandidates).sort((a, b) => a - b);
+    const positionInSelection = selectedIndices.indexOf(candidateIndex);
+    if (positionInSelection === -1) return undefined;
+    return candidateColors[positionInSelection % candidateColors.length];
+  };
 
   const toggleCandidate = (index: number) => {
     setSelectedCandidates((prev) => {
@@ -230,9 +258,9 @@ export function Dashboard() {
               </div>
             </div>
 
-            {selectedCandidate && (
+            {primarySelectedCandidate && (
               <div className="lg:ml-auto">
-                <MatchScore score={selectedCandidate.matchScore} size="md" />
+                <MatchScore score={primarySelectedCandidate.matchScore} size="md" />
               </div>
             )}
           </div>
@@ -310,8 +338,7 @@ export function Dashboard() {
             >
               <RadarChart
                 profileStats={profile.competencyStats}
-                candidateStats={selectedCandidate?.competencyStats}
-                candidateName={selectedCandidate?.personalInfo.name}
+                candidates={selectedCandidatesData}
               />
             </div>
           </section>
@@ -347,7 +374,7 @@ export function Dashboard() {
             >
               <ExperienceBadges
                 experiences={profile.requiredExperiences}
-                candidateExperiences={selectedCandidate?.requiredExperiences}
+                candidateExperiences={primarySelectedCandidate?.requiredExperiences}
               />
             </div>
           </section>
@@ -384,7 +411,7 @@ export function Dashboard() {
           >
             <SkillTree
               toolbox={profile.toolbox}
-              candidateToolbox={selectedCandidate?.toolbox}
+              candidateToolbox={primarySelectedCandidate?.toolbox}
             />
           </div>
         </section>
@@ -407,6 +434,7 @@ export function Dashboard() {
                 candidate={candidate}
                 successProfile={profile}
                 isSelected={selectedCandidates.has(index)}
+                selectionColor={getCandidateColor(index)}
                 onToggleSelect={() => toggleCandidate(index)}
               />
             ))}
