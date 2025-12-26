@@ -119,22 +119,22 @@ export function MatchScore({
               <BreakdownBar
                 label="Attributes"
                 value={score.breakdown.competencies}
-                weight="40%"
+                weight={`${score.weights?.attributes ?? 40}%`}
               />
               <BreakdownBar
                 label="Experiences"
                 value={score.breakdown.experiences}
-                weight="30%"
+                weight={`${score.weights?.experiences ?? 30}%`}
               />
               <BreakdownBar
-                label="Tools"
+                label="Skill Proficiency"
                 value={score.breakdown.tools}
-                weight="20%"
+                weight={`${score.weights?.skillProficiency ?? 20}%`}
               />
               <BreakdownBar
                 label="Cultural Fit"
                 value={score.breakdown.cultural}
-                weight="10%"
+                weight={`${score.weights?.culturalFit ?? 10}%`}
               />
             </div>
           )}

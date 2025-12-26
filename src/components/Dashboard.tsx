@@ -22,10 +22,11 @@ import { MatchScore } from './MatchScore';
 import { CandidateCard } from './CandidateCard';
 import { FileUpload } from './FileUpload';
 import { ResumeUpload } from './ResumeUpload';
+import { WeightConfig } from './WeightConfig';
 import { exampleProfile } from '../data/successProfile';
 import { candidateProfiles as initialCandidates } from '../data/candidateProfiles';
-import { calculateMatchScore } from '../utils/calculateMatch';
-import type { SuccessProfile, CandidateProfile } from '../types';
+import { calculateMatchScore, DEFAULT_WEIGHTS } from '../utils/calculateMatch';
+import type { SuccessProfile, CandidateProfile, MatchWeights } from '../types';
 import { cn } from '../utils/cn';
 
 export function Dashboard() {
@@ -37,6 +38,7 @@ export function Dashboard() {
   const [showUpload, setShowUpload] = useState(false);
   const [uploadTab, setUploadTab] = useState<'profile' | 'resumes'>('resumes');
   const [activeSection, setActiveSection] = useState<string | null>(null);
+  const [matchWeights, setMatchWeights] = useState<MatchWeights>(DEFAULT_WEIGHTS);
 
   // Colors for candidates (matching RadarChart)
   const candidateColors = [
@@ -47,14 +49,14 @@ export function Dashboard() {
     '#3B82F6',  // Blue
   ];
 
-  // Calculate match scores for all candidates
+  // Calculate match scores for all candidates when profile or weights change
   useEffect(() => {
     const updatedCandidates = candidates.map((candidate) => ({
       ...candidate,
-      matchScore: calculateMatchScore(profile, candidate),
+      matchScore: calculateMatchScore(profile, candidate, matchWeights),
     }));
     setCandidates(updatedCandidates);
-  }, [profile]);
+  }, [profile, matchWeights]);
 
   // Get all selected candidates for radar chart overlay
   const selectedCandidatesData = useMemo(() => {
@@ -105,9 +107,13 @@ export function Dashboard() {
     // Recalculate match scores for new candidates
     const updatedCandidates = newCandidates.map((candidate) => ({
       ...candidate,
-      matchScore: calculateMatchScore(profile, candidate),
+      matchScore: calculateMatchScore(profile, candidate, matchWeights),
     }));
     setCandidates(updatedCandidates);
+  };
+
+  const handleWeightsChange = (newWeights: MatchWeights) => {
+    setMatchWeights(newWeights);
   };
 
   return (
@@ -259,8 +265,13 @@ export function Dashboard() {
             </div>
 
             {primarySelectedCandidate && (
-              <div className="lg:ml-auto">
+              <div className="lg:ml-auto flex flex-col items-end gap-3">
                 <MatchScore score={primarySelectedCandidate.matchScore} size="md" />
+                <WeightConfig
+                  weights={matchWeights}
+                  onWeightsChange={handleWeightsChange}
+                  className="w-64"
+                />
               </div>
             )}
           </div>

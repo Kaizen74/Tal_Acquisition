@@ -62,9 +62,17 @@ export interface MatchBreakdown {
   cultural: number;
 }
 
+export interface MatchWeights {
+  attributes: number;
+  experiences: number;
+  skillProficiency: number;
+  culturalFit: number;
+}
+
 export interface MatchScore {
   overall: number;
   breakdown: MatchBreakdown;
+  weights?: MatchWeights;
 }
 
 export interface CandidateProfile extends SuccessProfile {

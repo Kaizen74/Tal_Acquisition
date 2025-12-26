@@ -1,5 +1,19 @@
 import type { SuccessProfile, CandidateProfile, CompetencyStats, MatchScore } from '../types';
 
+export interface MatchWeights {
+  attributes: number;
+  experiences: number;
+  skillProficiency: number;
+  culturalFit: number;
+}
+
+export const DEFAULT_WEIGHTS: MatchWeights = {
+  attributes: 40,
+  experiences: 30,
+  skillProficiency: 20,
+  culturalFit: 10,
+};
+
 // Calculate radar similarity using cosine similarity
 function calculateRadarSimilarity(
   profile: CompetencyStats,
@@ -103,7 +117,8 @@ function calculateCulturalFit(
 
 export function calculateMatchScore(
   profile: SuccessProfile,
-  candidate: CandidateProfile
+  candidate: CandidateProfile,
+  weights: MatchWeights = DEFAULT_WEIGHTS
 ): MatchScore {
   const competencies = calculateRadarSimilarity(
     profile.competencyStats,
@@ -113,9 +128,12 @@ export function calculateMatchScore(
   const tools = calculateToolMatch(profile, candidate);
   const cultural = calculateCulturalFit(profile, candidate);
 
-  // Weighted overall score
+  // Weighted overall score using configurable weights (convert percentages to decimals)
   const overall = Math.round(
-    competencies * 0.4 + experiences * 0.3 + tools * 0.2 + cultural * 0.1
+    competencies * (weights.attributes / 100) +
+    experiences * (weights.experiences / 100) +
+    tools * (weights.skillProficiency / 100) +
+    cultural * (weights.culturalFit / 100)
   );
 
   return {
@@ -126,5 +144,6 @@ export function calculateMatchScore(
       tools,
       cultural,
     },
+    weights, // Include weights in the result for display
   };
 }
