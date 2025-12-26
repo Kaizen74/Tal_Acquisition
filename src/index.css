@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 font-sans;
+  }
+}
+
+@layer components {
+  .badge-achieved {
+    @apply relative;
+  }
+
+  .badge-achieved::after {
+    content: '';
+    @apply absolute inset-0 bg-sats-green/20 rounded-lg;
+  }
+
+  .badge-missing {
+    @apply grayscale opacity-60;
+  }
+
+  .badge-partial {
+    @apply opacity-80;
+  }
+
+  .skill-node-mastered {
+    @apply border-2 border-yellow-400 shadow-lg shadow-yellow-400/30;
+  }
+
+  .skill-node-proficient {
+    @apply border-2 border-gray-400;
+  }
+
+  .skill-node-locked {
+    @apply grayscale opacity-50;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
