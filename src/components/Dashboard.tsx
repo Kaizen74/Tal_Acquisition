@@ -15,6 +15,7 @@ import {
   GraduationCap,
   FilePlus,
   Info,
+  Settings,
 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { RadarChart } from './RadarChart';
@@ -27,6 +28,7 @@ import { ResumeUpload } from './ResumeUpload';
 import { WeightConfig } from './WeightConfig';
 import { AttributeScoreEditor } from './AttributeScoreEditor';
 import { CulturalFitAssessment } from './CulturalFitAssessment';
+import { CulturalFitConfig } from './CulturalFitConfig';
 import { exampleProfile } from '../data/successProfile';
 import { candidateProfiles as initialCandidates } from '../data/candidateProfiles';
 import { calculateMatchScore, DEFAULT_WEIGHTS } from '../utils/calculateMatch';
@@ -45,6 +47,7 @@ export function Dashboard() {
   const [matchWeights, setMatchWeights] = useState<MatchWeights>(DEFAULT_WEIGHTS);
   const [editingCandidateIndex, setEditingCandidateIndex] = useState<number | null>(null);
   const [assessingCulturalFitIndex, setAssessingCulturalFitIndex] = useState<number | null>(null);
+  const [showCulturalFitConfig, setShowCulturalFitConfig] = useState(false);
 
   // Colors for candidates (matching RadarChart)
   const candidateColors = [
@@ -160,6 +163,15 @@ export function Dashboard() {
       updated[assessingCulturalFitIndex] = candidateWithScore;
       return updated;
     });
+  };
+
+  // Handle cultural fit config save (motivations and pain points)
+  const handleCulturalFitConfigSave = (motivations: string[], painPoints: string[]) => {
+    setProfile((prev) => ({
+      ...prev,
+      motivations,
+      painPoints,
+    }));
   };
 
   // Reset to empty state for new project
@@ -366,40 +378,73 @@ export function Dashboard() {
           </div>
 
           {/* Motivations and Pain Points */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 pt-6 border-t border-gray-100">
-            {/* Motivations */}
-            {profile.motivations.length > 0 && (
-              <div className="bg-sats-green/5 border border-sats-green/20 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <TrendingUp className="w-4 h-4 text-sats-green" />
-                  <span className="text-sm font-semibold text-sats-green">Motivations</span>
-                </div>
-                <ul className="space-y-1.5">
-                  {profile.motivations.map((motivation, index) => (
-                    <li key={index} className="flex items-start gap-2 text-sm text-gray-600">
-                      <span className="text-sats-green mt-0.5">+</span>
-                      <span>{motivation}</span>
-                    </li>
-                  ))}
-                </ul>
+          <div className="mt-6 pt-6 border-t border-gray-100">
+            {/* Section Header with Configure Button */}
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-sm font-semibold text-gray-700">Cultural Fit Criteria</h4>
+              <button
+                onClick={() => setShowCulturalFitConfig(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                title="Configure cultural fit criteria"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                Configure
+              </button>
+            </div>
+
+            {/* Show message if no criteria defined */}
+            {profile.motivations.length === 0 && profile.painPoints.length === 0 && (
+              <div className="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                <p className="text-sm text-gray-500 mb-2">No cultural fit criteria defined</p>
+                <button
+                  onClick={() => setShowCulturalFitConfig(true)}
+                  className="text-sm text-sats-blue hover:underline"
+                >
+                  Click to add motivations and pain points
+                </button>
               </div>
             )}
 
-            {/* Pain Points */}
-            {profile.painPoints.length > 0 && (
-              <div className="bg-sats-red/5 border border-sats-red/20 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <AlertTriangle className="w-4 h-4 text-sats-red" />
-                  <span className="text-sm font-semibold text-sats-red">Pain Points</span>
-                </div>
-                <ul className="space-y-1.5">
-                  {profile.painPoints.map((painPoint, index) => (
-                    <li key={index} className="flex items-start gap-2 text-sm text-gray-600">
-                      <span className="text-sats-red mt-0.5">!</span>
-                      <span>{painPoint}</span>
-                    </li>
-                  ))}
-                </ul>
+            {/* Criteria Grid */}
+            {(profile.motivations.length > 0 || profile.painPoints.length > 0) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Motivations */}
+                {profile.motivations.length > 0 && (
+                  <div className="bg-sats-green/5 border border-sats-green/20 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <TrendingUp className="w-4 h-4 text-sats-green" />
+                      <span className="text-sm font-semibold text-sats-green">Motivations</span>
+                      <span className="text-xs text-gray-400">({profile.motivations.length})</span>
+                    </div>
+                    <ul className="space-y-1.5">
+                      {profile.motivations.map((motivation, index) => (
+                        <li key={index} className="flex items-start gap-2 text-sm text-gray-600">
+                          <span className="text-sats-green mt-0.5">+</span>
+                          <span>{motivation}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Pain Points */}
+                {profile.painPoints.length > 0 && (
+                  <div className="bg-sats-red/5 border border-sats-red/20 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <AlertTriangle className="w-4 h-4 text-sats-red" />
+                      <span className="text-sm font-semibold text-sats-red">Pain Points</span>
+                      <span className="text-xs text-gray-400">({profile.painPoints.length})</span>
+                    </div>
+                    <ul className="space-y-1.5">
+                      {profile.painPoints.map((painPoint, index) => (
+                        <li key={index} className="flex items-start gap-2 text-sm text-gray-600">
+                          <span className="text-sats-red mt-0.5">!</span>
+                          <span>{painPoint}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -591,6 +636,16 @@ export function Dashboard() {
           painPoints={profile.painPoints}
           onSave={handleCulturalFitSave}
           onClose={() => setAssessingCulturalFitIndex(null)}
+        />
+      )}
+
+      {/* Cultural Fit Config Modal */}
+      {showCulturalFitConfig && (
+        <CulturalFitConfig
+          motivations={profile.motivations}
+          painPoints={profile.painPoints}
+          onSave={handleCulturalFitConfigSave}
+          onClose={() => setShowCulturalFitConfig(false)}
         />
       )}
     </div>
