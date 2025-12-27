@@ -8,7 +8,8 @@ import {
   Database,
   Ticket,
   BookOpen,
-  Lock,
+  CheckCircle,
+  XCircle,
   X,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
@@ -17,6 +18,8 @@ import type { ToolCategory, Tool } from '../types';
 interface SkillTreeProps {
   toolbox: ToolCategory[];
   candidateToolbox?: ToolCategory[];
+  candidateName?: string;
+  candidateColor?: string;
 }
 
 const categoryIcons: Record<string, React.ElementType> = {
@@ -34,23 +37,54 @@ const toolIcons: Record<string, React.ElementType> = {
   'CRM System': Database,
   'Ticketing System': Ticket,
   'Knowledge Base Management': BookOpen,
+  'AI Coding': Database,
 };
 
-function getSkillLevel(proficiency: number): 'mastered' | 'proficient' | 'locked' {
-  if (proficiency >= 85) return 'mastered';
-  if (proficiency >= 50) return 'proficient';
-  return 'locked';
+// Determine skill status based on achieved field
+function getSkillStatus(_tool: Tool, candidateTool?: Tool): 'achieved' | 'missing' {
+  if (!candidateTool) {
+    // No candidate data - show as not achieved by default
+    return 'missing';
+  }
+  return candidateTool.achieved ? 'achieved' : 'missing';
 }
 
-export function SkillTree({ toolbox, candidateToolbox }: SkillTreeProps) {
+export function SkillTree({ toolbox, candidateToolbox, candidateName, candidateColor }: SkillTreeProps) {
   const [selectedTool, setSelectedTool] = useState<{
     tool: Tool;
     candidateTool?: Tool;
     category: string;
   } | null>(null);
 
+  // Calculate summary stats
+  const achievedCount = toolbox.reduce((count, category, catIndex) => {
+    return count + category.tools.filter((_tool, toolIndex) => {
+      const candidateTool = candidateToolbox?.[catIndex]?.tools[toolIndex];
+      return candidateTool?.achieved;
+    }).length;
+  }, 0);
+  const totalTools = toolbox.reduce((count, cat) => count + cat.tools.length, 0);
+
   return (
     <div className="relative">
+      {/* Candidate indicator */}
+      {candidateName && (
+        <div
+          className="flex items-center gap-2 mb-4 p-2 rounded-lg border-l-4"
+          style={{
+            borderColor: candidateColor || '#6B7280',
+            backgroundColor: candidateColor ? `${candidateColor}10` : '#F3F4F6',
+          }}
+        >
+          <Database className="w-4 h-4 text-gray-600" />
+          <span className="text-sm font-medium text-gray-700">
+            Viewing: {candidateName}
+          </span>
+          <span className="ml-auto text-sm text-gray-500">
+            {achievedCount}/{totalTools} achieved
+          </span>
+        </div>
+      )}
       <div className="space-y-8">
         {toolbox.map((category, catIndex) => {
           const CategoryIcon = categoryIcons[category.category] || Database;
@@ -73,8 +107,7 @@ export function SkillTree({ toolbox, candidateToolbox }: SkillTreeProps) {
                 <div className="flex flex-wrap gap-4">
                   {category.tools.map((tool, toolIndex) => {
                     const candidateTool = candidateCategory?.tools[toolIndex];
-                    const displayProficiency = candidateTool?.proficiency ?? tool.proficiency;
-                    const level = getSkillLevel(displayProficiency);
+                    const status = getSkillStatus(tool, candidateTool);
                     const ToolIcon = toolIcons[tool.name] || Database;
 
                     return (
@@ -88,50 +121,39 @@ export function SkillTree({ toolbox, candidateToolbox }: SkillTreeProps) {
                           })
                         }
                         className={cn(
-                          'relative flex flex-col items-center p-3 rounded-lg transition-all duration-200 hover:scale-105',
-                          level === 'mastered' &&
-                            'bg-yellow-50 border-2 border-yellow-400 shadow-md shadow-yellow-200',
-                          level === 'proficient' &&
-                            'bg-gray-50 border-2 border-gray-300',
-                          level === 'locked' &&
-                            'bg-gray-100 border-2 border-gray-200 grayscale'
+                          'relative flex flex-col items-center p-3 rounded-lg transition-all duration-200 hover:scale-105 border-2',
+                          status === 'achieved' &&
+                            'bg-sats-green/10 border-sats-green',
+                          status === 'missing' &&
+                            'bg-gray-100 border-gray-300 grayscale'
                         )}
                       >
-                        {/* Tool icon */}
+                        {/* Tool icon with status indicator */}
                         <div
                           className={cn(
-                            'w-10 h-10 rounded-full flex items-center justify-center mb-2',
-                            level === 'mastered' && 'bg-yellow-400 text-white',
-                            level === 'proficient' && 'bg-gray-400 text-white',
-                            level === 'locked' && 'bg-gray-300 text-gray-500'
+                            'relative w-10 h-10 rounded-full flex items-center justify-center mb-2',
+                            status === 'achieved' && 'bg-sats-green text-white',
+                            status === 'missing' && 'bg-gray-400 text-white'
                           )}
                         >
-                          {level === 'locked' ? (
-                            <Lock className="w-5 h-5" />
-                          ) : (
-                            <ToolIcon className="w-5 h-5" />
-                          )}
+                          <ToolIcon className="w-5 h-5" />
+
+                          {/* Status overlay */}
+                          <div
+                            className={cn(
+                              'absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center',
+                              status === 'achieved' && 'bg-white text-sats-green',
+                              status === 'missing' && 'bg-white text-red-500'
+                            )}
+                          >
+                            {status === 'achieved' && <CheckCircle className="w-4 h-4" />}
+                            {status === 'missing' && <XCircle className="w-4 h-4" />}
+                          </div>
                         </div>
 
                         {/* Tool name */}
                         <span className="text-xs font-medium text-gray-700 text-center max-w-20">
                           {tool.name}
-                        </span>
-
-                        {/* Proficiency indicator */}
-                        <div className="mt-2 w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                          <div
-                            className={cn(
-                              'h-full rounded-full transition-all duration-300',
-                              level === 'mastered' && 'bg-yellow-400',
-                              level === 'proficient' && 'bg-sats-blue',
-                              level === 'locked' && 'bg-gray-300'
-                            )}
-                            style={{ width: `${displayProficiency}%` }}
-                          />
-                        </div>
-                        <span className="text-xs text-gray-500 mt-1">
-                          {displayProficiency}%
                         </span>
 
                         {/* Required badge */}
@@ -180,7 +202,7 @@ export function SkillTree({ toolbox, candidateToolbox }: SkillTreeProps) {
             <div className="space-y-4">
               {/* Required status */}
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Status</span>
+                <span className="text-sm text-gray-600">Requirement</span>
                 <span
                   className={cn(
                     'px-2 py-1 rounded text-sm font-medium',
@@ -193,58 +215,43 @@ export function SkillTree({ toolbox, candidateToolbox }: SkillTreeProps) {
                 </span>
               </div>
 
-              {/* Profile requirement */}
-              <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-600">Required Proficiency</span>
-                  <span className="font-medium text-sats-blue">
-                    {selectedTool.tool.proficiency}%
-                  </span>
-                </div>
-                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-sats-blue rounded-full"
-                    style={{ width: `${selectedTool.tool.proficiency}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Candidate proficiency */}
+              {/* Candidate status */}
               {selectedTool.candidateTool && (
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-600">Candidate Proficiency</span>
-                    <span className="font-medium text-sats-orange">
-                      {selectedTool.candidateTool.proficiency}%
-                    </span>
-                  </div>
-                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-sats-orange rounded-full"
-                      style={{
-                        width: `${selectedTool.candidateTool.proficiency}%`,
-                      }}
-                    />
-                  </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Candidate Status</span>
+                  <span
+                    className={cn(
+                      'px-2 py-1 rounded text-sm font-medium flex items-center gap-1',
+                      selectedTool.candidateTool.achieved
+                        ? 'bg-sats-green/10 text-sats-green'
+                        : 'bg-red-50 text-red-500'
+                    )}
+                  >
+                    {selectedTool.candidateTool.achieved ? (
+                      <>
+                        <CheckCircle className="w-4 h-4" /> Has Skill
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="w-4 h-4" /> Missing
+                      </>
+                    )}
+                  </span>
                 </div>
               )}
 
-              {/* Comparison */}
+              {/* Summary */}
               {selectedTool.candidateTool && (
                 <div className="pt-3 border-t border-gray-200">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Gap Analysis</span>
-                    {selectedTool.candidateTool.proficiency >=
-                    selectedTool.tool.proficiency ? (
+                    <span className="text-sm text-gray-600">Assessment</span>
+                    {selectedTool.candidateTool.achieved ? (
                       <span className="text-sm font-medium text-sats-green">
-                        + Meets Requirement
+                        ✓ Meets Requirement
                       </span>
                     ) : (
                       <span className="text-sm font-medium text-sats-red">
-                        -{' '}
-                        {selectedTool.tool.proficiency -
-                          selectedTool.candidateTool.proficiency}
-                        % below
+                        ✗ Skill Gap Identified
                       </span>
                     )}
                   </div>

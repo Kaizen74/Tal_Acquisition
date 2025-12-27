@@ -19,12 +19,7 @@ interface ClaudeResumeResponse {
   currentRole: string;
   yearsExperience: number;
   attributes: {
-    problemSolving: number;
-    stakeholderManagement: number;
-    technicalExpertise: number;
-    leadership: number;
-    customerFocus: number;
-    adaptability: number;
+    [key: string]: number;
   };
   experiences: Array<{
     name: string;
@@ -33,7 +28,7 @@ interface ClaudeResumeResponse {
   }>;
   skillProficiencies: Array<{
     toolName: string;
-    proficiency: number;
+    achieved: boolean;
     evidence: string;
   }>;
   summary: string;
@@ -72,6 +67,26 @@ function buildClaudePrompt(
     .flatMap((cat) => cat.tools.map((t) => `- ${t.name} (${cat.category})`))
     .join('\n');
 
+  // Build dynamic attributes list from attributeConfig
+  const attributesList = successProfile.attributeConfig
+    ? successProfile.attributeConfig.map((attr) => `- ${attr.key}: ${attr.label}`).join('\n')
+    : `- problemSolving: Problem Solving
+- stakeholderManagement: Stakeholder Management
+- technicalExpertise: Technical Expertise
+- leadership: Leadership
+- customerFocus: Customer Focus
+- adaptability: Adaptability`;
+
+  // Build expected attributes JSON structure
+  const attributeKeysJson = successProfile.attributeConfig
+    ? successProfile.attributeConfig.map((attr) => `    "${attr.key}": <0-100>`).join(',\n')
+    : `    "problemSolving": <0-100>,
+    "stakeholderManagement": <0-100>,
+    "technicalExpertise": <0-100>,
+    "leadership": <0-100>,
+    "customerFocus": <0-100>,
+    "adaptability": <0-100>`;
+
   return `You are analyzing a resume to extract structured candidate data for a talent acquisition system. The role being evaluated is: "${successProfile.role.title}".
 
 ## Resume Content:
@@ -86,15 +101,12 @@ ${experiencesList}
 ${toolsList}
 
 ### Attribute Categories to Evaluate:
-- problemSolving: Analytical thinking, troubleshooting, critical thinking abilities
-- stakeholderManagement: Client relationships, communication, collaboration skills
-- technicalExpertise: Technical knowledge, systems, programming, architecture skills
-- leadership: Team management, mentoring, directing abilities
-- customerFocus: Customer service orientation, user experience focus
-- adaptability: Flexibility, ability to handle change, learning agility
+${attributesList}
 
 ## Instructions:
-Analyze the resume and extract the following information. Be thorough and accurate. For skill proficiencies, estimate percentages based on evidence of usage, certifications, or explicit proficiency mentions.
+Analyze the resume and extract the following information. Be thorough in matching:
+- For EXPERIENCES: Mark as "achieved: true" if the candidate has relevant experience matching the required experience (look for similar job responsibilities, project work, or explicit mentions)
+- For SKILL PROFICIENCIES: Mark as "achieved: true" if the candidate mentions the tool/skill or has demonstrable experience with it (look for explicit mentions, related tools, or implied usage)
 
 Respond with ONLY a valid JSON object (no markdown, no explanation) in this exact format:
 {
@@ -102,24 +114,19 @@ Respond with ONLY a valid JSON object (no markdown, no explanation) in this exac
   "currentRole": "Current or most recent job title",
   "yearsExperience": <number of years of professional experience>,
   "attributes": {
-    "problemSolving": <0-100>,
-    "stakeholderManagement": <0-100>,
-    "technicalExpertise": <0-100>,
-    "leadership": <0-100>,
-    "customerFocus": <0-100>,
-    "adaptability": <0-100>
+${attributeKeysJson}
   },
   "experiences": [
     {
       "name": "<exact name from required experiences>",
-      "achieved": <true/false based on resume evidence>,
+      "achieved": <true if evidence found in resume, false otherwise>,
       "relevance": "<brief explanation of evidence found or why not achieved>"
     }
   ],
   "skillProficiencies": [
     {
       "toolName": "<exact tool name from required tools>",
-      "proficiency": <0-100>,
+      "achieved": <true if mentioned or implied in resume, false otherwise>,
       "evidence": "<brief explanation of evidence found>"
     }
   ],
@@ -127,9 +134,10 @@ Respond with ONLY a valid JSON object (no markdown, no explanation) in this exac
 }
 
 Important:
-- Use the exact experience names and tool names from the success profile
+- Use the EXACT experience names and tool names from the success profile lists above
+- Include ALL required experiences and ALL required tools in your response
+- Be generous in matching - if the resume shows related experience or skills, mark as achieved
 - Attribute scores should reflect evidence in the resume (50 = average, 70+ = strong evidence, 85+ = exceptional)
-- Skill proficiency should be 0 if no evidence found, higher based on explicit mentions or certifications
 - If the candidate's name cannot be determined, use "${fileName.replace('.pdf', '')}"`;
 }
 
@@ -188,20 +196,28 @@ function buildCandidateProfile(
   claudeResponse: ClaudeResumeResponse,
   successProfile: SuccessProfileContext
 ): CandidateProfile {
-  // Build competency stats
-  const competencyStats: CompetencyStats = {
-    problemSolving: claudeResponse.attributes.problemSolving || 50,
-    stakeholderManagement: claudeResponse.attributes.stakeholderManagement || 50,
-    technicalExpertise: claudeResponse.attributes.technicalExpertise || 50,
-    leadership: claudeResponse.attributes.leadership || 50,
-    customerFocus: claudeResponse.attributes.customerFocus || 50,
-    adaptability: claudeResponse.attributes.adaptability || 50,
-  };
+  // Build competency stats dynamically from attributeConfig or use defaults
+  const competencyStats: CompetencyStats = {};
 
-  // Map experiences
+  if (successProfile.attributeConfig && successProfile.attributeConfig.length > 0) {
+    // Use dynamic attributes from success profile
+    successProfile.attributeConfig.forEach((attr) => {
+      competencyStats[attr.key] = claudeResponse.attributes[attr.key] || 50;
+    });
+  } else {
+    // Use default attributes
+    competencyStats.problemSolving = claudeResponse.attributes.problemSolving || 50;
+    competencyStats.stakeholderManagement = claudeResponse.attributes.stakeholderManagement || 50;
+    competencyStats.technicalExpertise = claudeResponse.attributes.technicalExpertise || 50;
+    competencyStats.leadership = claudeResponse.attributes.leadership || 50;
+    competencyStats.customerFocus = claudeResponse.attributes.customerFocus || 50;
+    competencyStats.adaptability = claudeResponse.attributes.adaptability || 50;
+  }
+
+  // Map experiences - look for matches more flexibly
   const requiredExperiences = successProfile.requiredExperiences.map((exp) => {
     const claudeExp = claudeResponse.experiences.find(
-      (e) => e.name.toLowerCase() === exp.name.toLowerCase()
+      (e) => e.name.toLowerCase().trim() === exp.name.toLowerCase().trim()
     );
     return {
       ...exp,
@@ -209,16 +225,17 @@ function buildCandidateProfile(
     };
   });
 
-  // Map toolbox with proficiencies
+  // Map toolbox with achieved status (not percentages)
   const toolbox: ToolCategory[] = successProfile.toolbox.map((category) => ({
     category: category.category,
     tools: category.tools.map((tool) => {
       const claudeTool = claudeResponse.skillProficiencies.find(
-        (t) => t.toolName.toLowerCase() === tool.name.toLowerCase()
+        (t) => t.toolName.toLowerCase().trim() === tool.name.toLowerCase().trim()
       );
       return {
         ...tool,
-        proficiency: claudeTool?.proficiency ?? 30,
+        proficiency: tool.proficiency, // Keep original from success profile
+        achieved: claudeTool?.achieved ?? false, // Add achieved status from Claude
       };
     }),
   }));

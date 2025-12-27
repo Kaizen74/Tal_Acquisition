@@ -332,12 +332,13 @@ export function resumeToCandidate(
     achieved: checkExperienceMatch(extractedData, exp),
   }));
 
-  // Map tools based on skills
+  // Map tools based on skills - determine if tool is achieved
   const toolbox = successProfile.toolbox.map(category => ({
     category: category.category,
     tools: category.tools.map(tool => ({
       ...tool,
-      proficiency: estimateToolProficiency(extractedData, tool.name),
+      proficiency: tool.proficiency, // Keep original from success profile
+      achieved: checkToolMatch(extractedData, tool.name), // Check if candidate has this skill
     })),
   }));
 
@@ -447,7 +448,8 @@ function checkExperienceMatch(data: ExtractedResumeData, exp: { name: string; ca
   return searchTerms.some(term => allText.includes(term));
 }
 
-function estimateToolProficiency(data: ExtractedResumeData, toolName: string): number {
+// Check if candidate has a particular tool/skill
+function checkToolMatch(data: ExtractedResumeData, toolName: string): boolean {
   const allText = [
     ...data.skills,
     ...data.experiences.map(e => e.description),
@@ -456,32 +458,29 @@ function estimateToolProficiency(data: ExtractedResumeData, toolName: string): n
 
   const toolLower = toolName.toLowerCase();
 
-  // Direct match
+  // Direct match in skills
   if (data.skills.some(s => s.toLowerCase().includes(toolLower))) {
-    return 70 + Math.floor(Math.random() * 25);
+    return true;
   }
 
-  // Partial match
+  // Match in text
   if (allText.includes(toolLower)) {
-    return 60 + Math.floor(Math.random() * 20);
+    return true;
   }
 
   // Related skill match
   const relatedTerms: Record<string, string[]> = {
-    'email support': ['email', 'communication', 'correspondence'],
+    'email support': ['email', 'communication', 'correspondence', 'outlook'],
     'phone support': ['phone', 'call', 'telephone', 'customer service'],
-    'chat support': ['chat', 'messaging', 'live support'],
-    'kpi dashboard': ['analytics', 'reporting', 'metrics', 'dashboard', 'data'],
-    'crm system': ['crm', 'salesforce', 'hubspot', 'customer relationship'],
-    'ticketing system': ['jira', 'zendesk', 'ticket', 'support system'],
+    'chat support': ['chat', 'messaging', 'live support', 'slack'],
+    'kpi dashboard': ['analytics', 'reporting', 'metrics', 'dashboard', 'data', 'kpi'],
+    'crm system': ['crm', 'salesforce', 'hubspot', 'customer relationship', 'dynamics'],
+    'ticketing system': ['jira', 'zendesk', 'ticket', 'support system', 'servicenow'],
+    'ai coding': ['ai', 'machine learning', 'artificial intelligence', 'gpt', 'copilot', 'claude'],
   };
 
   const related = relatedTerms[toolLower] || [];
-  if (related.some(r => allText.includes(r))) {
-    return 50 + Math.floor(Math.random() * 20);
-  }
-
-  return 30 + Math.floor(Math.random() * 20);
+  return related.some(r => allText.includes(r));
 }
 
 // Parse multiple PDF files

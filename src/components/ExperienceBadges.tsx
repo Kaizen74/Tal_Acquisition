@@ -16,6 +16,8 @@ import type { RequiredExperience } from '../types';
 interface ExperienceBadgesProps {
   experiences: RequiredExperience[];
   candidateExperiences?: RequiredExperience[];
+  candidateName?: string;
+  candidateColor?: string;
 }
 
 const iconMap: Record<string, React.ElementType> = {
@@ -41,9 +43,36 @@ function getBadgeStatus(
 export function ExperienceBadges({
   experiences,
   candidateExperiences,
+  candidateName,
+  candidateColor,
 }: ExperienceBadgesProps) {
+  // Calculate summary stats
+  const achievedCount = experiences.filter((_exp, index) => {
+    const candidateExp = candidateExperiences?.[index];
+    return candidateExp?.achieved;
+  }).length;
+
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+    <div>
+      {/* Candidate indicator */}
+      {candidateName && (
+        <div
+          className="flex items-center gap-2 mb-4 p-2 rounded-lg border-l-4"
+          style={{
+            borderColor: candidateColor || '#6B7280',
+            backgroundColor: candidateColor ? `${candidateColor}10` : '#F3F4F6',
+          }}
+        >
+          <Users className="w-4 h-4 text-gray-600" />
+          <span className="text-sm font-medium text-gray-700">
+            Viewing: {candidateName}
+          </span>
+          <span className="ml-auto text-sm text-gray-500">
+            {achievedCount}/{experiences.length} achieved
+          </span>
+        </div>
+      )}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
       {experiences.map((exp, index) => {
         const candidateExp = candidateExperiences?.[index];
         const status = getBadgeStatus(exp, candidateExp);
@@ -126,6 +155,7 @@ export function ExperienceBadges({
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

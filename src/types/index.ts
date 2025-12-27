@@ -23,6 +23,7 @@ export interface Tool {
   name: string;
   proficiency: number;
   isRequired: boolean;
+  achieved?: boolean; // For candidate profiles - whether they have this skill
 }
 
 export interface ToolCategory {

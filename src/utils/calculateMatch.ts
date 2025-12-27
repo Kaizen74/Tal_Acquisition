@@ -63,33 +63,28 @@ function calculateExperienceMatch(
   return Math.round((achievedCount / totalExperiences) * 100);
 }
 
-// Calculate tool proficiency match
+// Calculate tool match based on achieved status
 function calculateToolMatch(
   profile: SuccessProfile,
   candidate: CandidateProfile
 ): number {
   let totalRequired = 0;
-  let totalScore = 0;
+  let achievedCount = 0;
 
   profile.toolbox.forEach((category, catIndex) => {
     category.tools.forEach((tool, toolIndex) => {
       if (tool.isRequired) {
         totalRequired++;
         const candidateTool = candidate.toolbox[catIndex]?.tools[toolIndex];
-        if (candidateTool) {
-          // Score based on how close candidate is to required proficiency
-          const ratio = Math.min(
-            candidateTool.proficiency / tool.proficiency,
-            1
-          );
-          totalScore += ratio * 100;
+        if (candidateTool?.achieved) {
+          achievedCount++;
         }
       }
     });
   });
 
   if (totalRequired === 0) return 100;
-  return Math.round(totalScore / totalRequired);
+  return Math.round((achievedCount / totalRequired) * 100);
 }
 
 // Calculate cultural fit based on matching motivations and pain points

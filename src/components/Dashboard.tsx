@@ -451,6 +451,8 @@ export function Dashboard() {
               <ExperienceBadges
                 experiences={profile.requiredExperiences}
                 candidateExperiences={primarySelectedCandidate?.requiredExperiences}
+                candidateName={primarySelectedCandidate?.personalInfo.name}
+                candidateColor={getCandidateColor(Array.from(selectedCandidates)[0])}
               />
             </div>
           </section>
@@ -488,6 +490,8 @@ export function Dashboard() {
             <SkillTree
               toolbox={profile.toolbox}
               candidateToolbox={primarySelectedCandidate?.toolbox}
+              candidateName={primarySelectedCandidate?.personalInfo.name}
+              candidateColor={getCandidateColor(Array.from(selectedCandidates)[0])}
             />
           </div>
         </section>

@@ -87,24 +87,24 @@ export const candidateProfiles: CandidateProfile[] = [
       {
         category: 'Communication',
         tools: [
-          { name: 'Email Support', proficiency: 95, isRequired: true },
-          { name: 'Phone Support', proficiency: 88, isRequired: true },
-          { name: 'Chat Support', proficiency: 90, isRequired: false },
+          { name: 'Email Support', proficiency: 95, isRequired: true, achieved: true },
+          { name: 'Phone Support', proficiency: 88, isRequired: true, achieved: true },
+          { name: 'Chat Support', proficiency: 90, isRequired: false, achieved: true },
         ],
       },
       {
         category: 'Analytics',
         tools: [
-          { name: 'KPI Dashboard', proficiency: 75, isRequired: true },
-          { name: 'Customer Satisfaction Surveys', proficiency: 80, isRequired: true },
+          { name: 'KPI Dashboard', proficiency: 75, isRequired: true, achieved: true },
+          { name: 'Customer Satisfaction Surveys', proficiency: 80, isRequired: true, achieved: false },
         ],
       },
       {
         category: 'Technical',
         tools: [
-          { name: 'CRM System', proficiency: 90, isRequired: true },
-          { name: 'Ticketing System', proficiency: 92, isRequired: true },
-          { name: 'Knowledge Base Management', proficiency: 85, isRequired: false },
+          { name: 'CRM System', proficiency: 90, isRequired: true, achieved: true },
+          { name: 'Ticketing System', proficiency: 92, isRequired: true, achieved: true },
+          { name: 'Knowledge Base Management', proficiency: 85, isRequired: false, achieved: true },
         ],
       },
     ],
@@ -214,24 +214,24 @@ export const candidateProfiles: CandidateProfile[] = [
       {
         category: 'Communication',
         tools: [
-          { name: 'Email Support', proficiency: 85, isRequired: true },
-          { name: 'Phone Support', proficiency: 80, isRequired: true },
-          { name: 'Chat Support', proficiency: 95, isRequired: false },
+          { name: 'Email Support', proficiency: 85, isRequired: true, achieved: true },
+          { name: 'Phone Support', proficiency: 80, isRequired: true, achieved: false },
+          { name: 'Chat Support', proficiency: 95, isRequired: false, achieved: true },
         ],
       },
       {
         category: 'Analytics',
         tools: [
-          { name: 'KPI Dashboard', proficiency: 85, isRequired: true },
-          { name: 'Customer Satisfaction Surveys', proficiency: 70, isRequired: true },
+          { name: 'KPI Dashboard', proficiency: 85, isRequired: true, achieved: true },
+          { name: 'Customer Satisfaction Surveys', proficiency: 70, isRequired: true, achieved: true },
         ],
       },
       {
         category: 'Technical',
         tools: [
-          { name: 'CRM System', proficiency: 88, isRequired: true },
-          { name: 'Ticketing System', proficiency: 95, isRequired: true },
-          { name: 'Knowledge Base Management', proficiency: 90, isRequired: false },
+          { name: 'CRM System', proficiency: 88, isRequired: true, achieved: true },
+          { name: 'Ticketing System', proficiency: 95, isRequired: true, achieved: true },
+          { name: 'Knowledge Base Management', proficiency: 90, isRequired: false, achieved: true },
         ],
       },
     ],
@@ -340,24 +340,24 @@ export const candidateProfiles: CandidateProfile[] = [
       {
         category: 'Communication',
         tools: [
-          { name: 'Email Support', proficiency: 98, isRequired: true },
-          { name: 'Phone Support', proficiency: 95, isRequired: true },
-          { name: 'Chat Support', proficiency: 80, isRequired: false },
+          { name: 'Email Support', proficiency: 98, isRequired: true, achieved: true },
+          { name: 'Phone Support', proficiency: 95, isRequired: true, achieved: true },
+          { name: 'Chat Support', proficiency: 80, isRequired: false, achieved: true },
         ],
       },
       {
         category: 'Analytics',
         tools: [
-          { name: 'KPI Dashboard', proficiency: 90, isRequired: true },
-          { name: 'Customer Satisfaction Surveys', proficiency: 95, isRequired: true },
+          { name: 'KPI Dashboard', proficiency: 90, isRequired: true, achieved: true },
+          { name: 'Customer Satisfaction Surveys', proficiency: 95, isRequired: true, achieved: true },
         ],
       },
       {
         category: 'Technical',
         tools: [
-          { name: 'CRM System', proficiency: 92, isRequired: true },
-          { name: 'Ticketing System', proficiency: 85, isRequired: true },
-          { name: 'Knowledge Base Management', proficiency: 78, isRequired: false },
+          { name: 'CRM System', proficiency: 92, isRequired: true, achieved: true },
+          { name: 'Ticketing System', proficiency: 85, isRequired: true, achieved: true },
+          { name: 'Knowledge Base Management', proficiency: 78, isRequired: false, achieved: true },
         ],
       },
     ],
