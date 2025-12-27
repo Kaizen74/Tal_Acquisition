@@ -27,8 +27,8 @@ const mockSuccessProfile: SuccessProfile = {
     { key: 'adaptability', label: 'Adaptability', value: 80 },
   ],
   requiredExperiences: [
-    { category: 'Leadership', name: 'Team Management', description: 'Led teams', minYears: 3, achieved: false, badgeIcon: 'Users' },
-    { category: 'Technical', name: 'System Design', description: 'Designed systems', minYears: 2, achieved: false, badgeIcon: 'Database' },
+    { category: 'Leadership', name: 'Team Management', description: 'Led teams', minYears: 3, isRequired: true, achieved: false, badgeIcon: 'Users' },
+    { category: 'Technical', name: 'System Design', description: 'Designed systems', minYears: 2, isRequired: true, achieved: false, badgeIcon: 'Database' },
   ],
   academicBackground: { minDegree: "Bachelor's", preferredFields: [], certifications: [] },
   toolbox: [
@@ -58,8 +58,8 @@ const mockCandidate: CandidateProfile = {
     adaptability: 90,
   },
   requiredExperiences: [
-    { category: 'Leadership', name: 'Team Management', description: 'Led teams', minYears: 3, achieved: true, badgeIcon: 'Users' },
-    { category: 'Technical', name: 'System Design', description: 'Designed systems', minYears: 2, achieved: false, badgeIcon: 'Database' },
+    { category: 'Leadership', name: 'Team Management', description: 'Led teams', minYears: 3, isRequired: true, achieved: true, badgeIcon: 'Users' },
+    { category: 'Technical', name: 'System Design', description: 'Designed systems', minYears: 2, isRequired: true, achieved: false, badgeIcon: 'Database' },
   ],
   toolbox: [
     {

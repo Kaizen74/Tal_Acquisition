@@ -48,19 +48,27 @@ function calculateRadarSimilarity(
   return Math.round((similarity * 50 + closenessScore * 0.5) * 100) / 100;
 }
 
-// Calculate experience match based on achieved experiences
+// Calculate experience match based on achieved required experiences
 function calculateExperienceMatch(
   profile: SuccessProfile,
   candidate: CandidateProfile
 ): number {
-  const totalExperiences = profile.requiredExperiences.length;
-  if (totalExperiences === 0) return 100;
+  // Only count required experiences (isRequired = true) toward match score
+  let totalRequired = 0;
+  let achievedCount = 0;
 
-  const achievedCount = candidate.requiredExperiences.filter(
-    (exp) => exp.achieved
-  ).length;
+  profile.requiredExperiences.forEach((exp, index) => {
+    if (exp.isRequired) {
+      totalRequired++;
+      const candidateExp = candidate.requiredExperiences[index];
+      if (candidateExp?.achieved) {
+        achievedCount++;
+      }
+    }
+  });
 
-  return Math.round((achievedCount / totalExperiences) * 100);
+  if (totalRequired === 0) return 100;
+  return Math.round((achievedCount / totalRequired) * 100);
 }
 
 // Calculate tool match based on achieved status

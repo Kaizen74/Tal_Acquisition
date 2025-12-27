@@ -15,7 +15,8 @@ export interface RequiredExperience {
   name: string;
   description: string;
   minYears: number;
-  achieved: boolean;
+  isRequired: boolean; // Whether this experience is mandatory (from success profile)
+  achieved: boolean; // Whether candidate has achieved this experience
   badgeIcon: string;
 }
 

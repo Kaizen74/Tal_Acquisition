@@ -318,7 +318,7 @@ export function resumeToCandidate(
   extractedData: ExtractedResumeData,
   successProfile: {
     role: { title: string; level: string; class: string };
-    requiredExperiences: Array<{ category: string; name: string; description: string; minYears: number; badgeIcon: string }>;
+    requiredExperiences: Array<{ category: string; name: string; description: string; minYears: number; isRequired: boolean; achieved: boolean; badgeIcon: string }>;
     toolbox: Array<{ category: string; tools: Array<{ name: string; proficiency: number; isRequired: boolean }> }>;
     attributeConfig?: Array<{ key: string; label: string; value: number }>;
   }

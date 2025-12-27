@@ -78,13 +78,15 @@ export function parseProfileCSV(csvContent: string): SuccessProfile | null {
     });
 
     // Parse experiences
+    // Note: CSV 'achieved' column indicates if experience is required (TRUE = mandatory)
     const experienceRows = data.filter((row) => row.section === 'experience');
     const requiredExperiences = experienceRows.map((row) => ({
       category: row.category || '',
       name: row.name || '',
       description: row.description || '',
       minYears: parseInt(row.minYears, 10) || 0,
-      achieved: row.achieved?.toLowerCase() === 'true',
+      isRequired: row.achieved?.toLowerCase() === 'true', // CSV 'achieved' = isRequired
+      achieved: false, // Will be set by candidate matching
       badgeIcon: row.badgeIcon || 'Award',
     }));
 

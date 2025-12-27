@@ -8,6 +8,8 @@ interface SuccessProfileContext {
     name: string;
     description: string;
     minYears: number;
+    isRequired: boolean;
+    achieved: boolean;
     badgeIcon: string;
   }>;
   toolbox: ToolCategory[];

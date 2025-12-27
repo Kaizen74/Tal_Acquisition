@@ -31,11 +31,13 @@ const iconMap: Record<string, React.ElementType> = {
 };
 
 function getBadgeStatus(
-  exp: RequiredExperience,
+  _exp: RequiredExperience,
   candidateExp?: RequiredExperience
 ): 'achieved' | 'missing' | 'partial' {
+  // Only show as achieved if candidate has this experience
+  // If no candidate selected, show all as 'missing' (gray/unlit)
   if (!candidateExp) {
-    return exp.achieved ? 'achieved' : 'missing';
+    return 'missing';
   }
   return candidateExp.achieved ? 'achieved' : 'missing';
 }
@@ -85,12 +87,19 @@ export function ExperienceBadges({
           >
             <div
               className={cn(
-                'flex flex-col items-center p-4 rounded-lg border-2 transition-all duration-200',
+                'relative flex flex-col items-center p-4 rounded-lg border-2 transition-all duration-200',
                 status === 'achieved' && 'bg-sats-green/10 border-sats-green',
                 status === 'missing' && 'bg-gray-100 border-gray-300 grayscale',
                 status === 'partial' && 'bg-sats-yellow/10 border-sats-yellow'
               )}
             >
+              {/* Required badge */}
+              {exp.isRequired && (
+                <span className="absolute -top-2 -right-2 px-1.5 py-0.5 bg-sats-red text-white text-xs font-medium rounded-full z-10">
+                  Req
+                </span>
+              )}
+
               {/* Badge icon */}
               <div
                 className={cn(
