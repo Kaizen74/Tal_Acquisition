@@ -1,13 +1,8 @@
 import { useState } from 'react';
 import {
   MessageSquare,
-  Phone,
-  MessageCircle,
   BarChart3,
-  ThumbsUp,
   Database,
-  Ticket,
-  BookOpen,
   CheckCircle,
   XCircle,
   X,
@@ -28,22 +23,9 @@ const categoryIcons: Record<string, React.ElementType> = {
   Technical: Database,
 };
 
-const toolIcons: Record<string, React.ElementType> = {
-  'Email Support': MessageSquare,
-  'Phone Support': Phone,
-  'Chat Support': MessageCircle,
-  'KPI Dashboard': BarChart3,
-  'Customer Satisfaction Surveys': ThumbsUp,
-  'CRM System': Database,
-  'Ticketing System': Ticket,
-  'Knowledge Base Management': BookOpen,
-  'AI Coding': Database,
-};
-
 // Determine skill status based on achieved field
 function getSkillStatus(_tool: Tool, candidateTool?: Tool): 'achieved' | 'missing' {
   if (!candidateTool) {
-    // No candidate data - show as not achieved by default
     return 'missing';
   }
   return candidateTool.achieved ? 'achieved' : 'missing';
@@ -85,87 +67,68 @@ export function SkillTree({ toolbox, candidateToolbox, candidateName, candidateC
           </span>
         </div>
       )}
-      <div className="space-y-8">
+
+      {/* Compact grid layout for all categories */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {toolbox.map((category, catIndex) => {
           const CategoryIcon = categoryIcons[category.category] || Database;
           const candidateCategory = candidateToolbox?.[catIndex];
 
           return (
-            <div key={category.category} className="relative">
-              {/* Category node */}
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-12 h-12 rounded-full bg-sats-purple text-white flex items-center justify-center shadow-lg">
-                  <CategoryIcon className="w-6 h-6" />
+            <div
+              key={category.category}
+              className="bg-gray-50 rounded-lg p-4 border border-gray-200"
+            >
+              {/* Compact category header */}
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-full bg-sats-purple text-white flex items-center justify-center">
+                  <CategoryIcon className="w-4 h-4" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900">
+                <h4 className="text-sm font-semibold text-gray-900">
                   {category.category}
-                </h3>
+                </h4>
               </div>
 
-              {/* Tools grid */}
-              <div className="ml-6 pl-6 border-l-2 border-sats-gray">
-                <div className="flex flex-wrap gap-4">
-                  {category.tools.map((tool, toolIndex) => {
-                    const candidateTool = candidateCategory?.tools[toolIndex];
-                    const status = getSkillStatus(tool, candidateTool);
-                    const ToolIcon = toolIcons[tool.name] || Database;
+              {/* Compact tools list */}
+              <div className="flex flex-wrap gap-2">
+                {category.tools.map((tool, toolIndex) => {
+                  const candidateTool = candidateCategory?.tools[toolIndex];
+                  const status = getSkillStatus(tool, candidateTool);
 
-                    return (
-                      <button
-                        key={tool.name}
-                        onClick={() =>
-                          setSelectedTool({
-                            tool,
-                            candidateTool,
-                            category: category.category,
-                          })
-                        }
-                        className={cn(
-                          'relative flex flex-col items-center p-3 rounded-lg transition-all duration-200 hover:scale-105 border-2',
-                          status === 'achieved' &&
-                            'bg-sats-green/10 border-sats-green',
-                          status === 'missing' &&
-                            'bg-gray-100 border-gray-300 grayscale'
-                        )}
-                      >
-                        {/* Tool icon with status indicator */}
-                        <div
-                          className={cn(
-                            'relative w-10 h-10 rounded-full flex items-center justify-center mb-2',
-                            status === 'achieved' && 'bg-sats-green text-white',
-                            status === 'missing' && 'bg-gray-400 text-white'
-                          )}
-                        >
-                          <ToolIcon className="w-5 h-5" />
+                  return (
+                    <button
+                      key={tool.name}
+                      onClick={() =>
+                        setSelectedTool({
+                          tool,
+                          candidateTool,
+                          category: category.category,
+                        })
+                      }
+                      className={cn(
+                        'relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all hover:scale-105',
+                        status === 'achieved'
+                          ? 'bg-sats-green/15 text-sats-green border border-sats-green/30'
+                          : 'bg-gray-200 text-gray-500 border border-gray-300'
+                      )}
+                    >
+                      {/* Status icon only - no duplicate tool icon */}
+                      {status === 'achieved' ? (
+                        <CheckCircle className="w-3.5 h-3.5" />
+                      ) : (
+                        <XCircle className="w-3.5 h-3.5" />
+                      )}
+                      <span>{tool.name}</span>
 
-                          {/* Status overlay */}
-                          <div
-                            className={cn(
-                              'absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center',
-                              status === 'achieved' && 'bg-white text-sats-green',
-                              status === 'missing' && 'bg-white text-red-500'
-                            )}
-                          >
-                            {status === 'achieved' && <CheckCircle className="w-4 h-4" />}
-                            {status === 'missing' && <XCircle className="w-4 h-4" />}
-                          </div>
-                        </div>
-
-                        {/* Tool name */}
-                        <span className="text-xs font-medium text-gray-700 text-center max-w-20">
-                          {tool.name}
+                      {/* Required badge */}
+                      {tool.isRequired && (
+                        <span className="absolute -top-1.5 -right-1.5 px-1 py-0.5 bg-sats-red text-white text-[10px] leading-none rounded-full">
+                          Req
                         </span>
-
-                        {/* Required badge */}
-                        {tool.isRequired && (
-                          <span className="absolute -top-2 -right-2 px-1.5 py-0.5 bg-sats-red text-white text-xs rounded-full">
-                            Req
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           );
