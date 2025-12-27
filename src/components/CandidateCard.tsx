@@ -116,14 +116,15 @@ export function CandidateCard({
             <button
               onClick={onAssessCulturalFit}
               className={cn(
-                'p-2 rounded-lg transition-colors',
+                'flex items-center gap-1 px-2 py-1.5 rounded-lg transition-colors text-xs font-medium',
                 candidate.culturalFitAssessment
                   ? 'bg-sats-purple/10 text-sats-purple hover:bg-sats-purple hover:text-white'
-                  : 'bg-gray-100 text-gray-500 hover:bg-sats-purple hover:text-white'
+                  : 'bg-sats-orange/10 text-sats-orange hover:bg-sats-orange hover:text-white animate-pulse'
               )}
               title={candidate.culturalFitAssessment ? 'Edit cultural fit assessment' : 'Assess cultural fit'}
             >
               <Heart className={cn('w-4 h-4', candidate.culturalFitAssessment && 'fill-current')} />
+              {!candidate.culturalFitAssessment && <span>Assess</span>}
             </button>
           )}
           {onEditScores && (
@@ -238,15 +239,28 @@ export function CandidateCard({
             {candidate.matchScore.breakdown.tools}%
           </div>
         </div>
-        <div className="text-center p-2 bg-gray-50 rounded">
-          <div className="text-xs text-gray-500">Cultural</div>
-          <div className={cn(
-            'font-semibold',
-            candidate.culturalFitAssessment ? 'text-sats-orange' : 'text-gray-400'
-          )}>
-            {candidate.matchScore.breakdown.cultural}%
+        {onAssessCulturalFit && !candidate.culturalFitAssessment ? (
+          <button
+            onClick={onAssessCulturalFit}
+            className="text-center p-2 bg-sats-orange/10 rounded border border-dashed border-sats-orange/30 hover:bg-sats-orange/20 transition-colors cursor-pointer"
+            title="Click to assess cultural fit"
+          >
+            <div className="text-xs text-sats-orange">Cultural</div>
+            <div className="text-xs font-medium text-sats-orange">
+              Assess →
+            </div>
+          </button>
+        ) : (
+          <div className="text-center p-2 bg-gray-50 rounded">
+            <div className="text-xs text-gray-500">Cultural</div>
+            <div className={cn(
+              'font-semibold',
+              candidate.culturalFitAssessment ? 'text-sats-orange' : 'text-gray-400'
+            )}>
+              {candidate.matchScore.breakdown.cultural}%
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
