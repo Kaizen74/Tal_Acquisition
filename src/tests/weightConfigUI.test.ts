@@ -3,7 +3,8 @@
  * Verifies the data flow: WeightConfig -> Dashboard state -> calculateMatchScore -> MatchScore display
  */
 
-import { DEFAULT_WEIGHTS, MatchWeights } from '../utils/calculateMatch';
+import { DEFAULT_WEIGHTS } from '../utils/calculateMatch';
+import type { MatchWeights } from '../utils/calculateMatch';
 
 // Simulate the WeightConfig component validation logic
 function validateWeights(weights: MatchWeights): { isValid: boolean; total: number } {

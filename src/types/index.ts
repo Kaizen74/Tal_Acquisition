@@ -38,6 +38,7 @@ export interface SuccessProfile {
     title: string;
     level: string;
     class: string;
+    description?: string;
   };
   competencyStats: CompetencyStats;
   requiredExperiences: RequiredExperience[];

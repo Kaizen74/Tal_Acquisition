@@ -28,8 +28,9 @@ export function parseProfileCSV(csvContent: string): SuccessProfile | null {
           title: roleRow.value || '',
           level: roleRow.seniority || roleRow.level || '',
           class: roleRow.objective || roleRow.class || '',
+          description: roleRow.description || '',
         }
-      : { title: '', level: '', class: '' };
+      : { title: '', level: '', class: '', description: '' };
 
     // Parse attribute stats (also supports old 'competency' section name)
     const statsRows = data.filter((row) => row.section === 'attribute' || row.section === 'competency');

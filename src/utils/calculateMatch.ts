@@ -128,21 +128,27 @@ export function calculateMatchScore(
   const tools = calculateToolMatch(profile, candidate);
   const cultural = calculateCulturalFit(profile, candidate);
 
+  // Cap individual scores at 100
+  const cappedCompetencies = Math.min(100, Math.round(competencies));
+  const cappedExperiences = Math.min(100, experiences);
+  const cappedTools = Math.min(100, tools);
+  const cappedCultural = Math.min(100, cultural);
+
   // Weighted overall score using configurable weights (convert percentages to decimals)
-  const overall = Math.round(
-    competencies * (weights.attributes / 100) +
-    experiences * (weights.experiences / 100) +
-    tools * (weights.skillProficiency / 100) +
-    cultural * (weights.culturalFit / 100)
-  );
+  const overall = Math.min(100, Math.round(
+    cappedCompetencies * (weights.attributes / 100) +
+    cappedExperiences * (weights.experiences / 100) +
+    cappedTools * (weights.skillProficiency / 100) +
+    cappedCultural * (weights.culturalFit / 100)
+  ));
 
   return {
     overall,
     breakdown: {
-      competencies: Math.round(competencies),
-      experiences,
-      tools,
-      cultural,
+      competencies: cappedCompetencies,
+      experiences: cappedExperiences,
+      tools: cappedTools,
+      cultural: cappedCultural,
     },
     weights, // Include weights in the result for display
   };

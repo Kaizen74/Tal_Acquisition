@@ -13,6 +13,8 @@ import {
   TrendingUp,
   AlertTriangle,
   GraduationCap,
+  FilePlus,
+  Info,
 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { RadarChart } from './RadarChart';
@@ -116,6 +118,33 @@ export function Dashboard() {
     setMatchWeights(newWeights);
   };
 
+  // Reset to empty state for new project
+  const handleNewProject = () => {
+    const emptyProfile: SuccessProfile = {
+      role: { title: '', level: '', class: '', description: '' },
+      competencyStats: {
+        problemSolving: 0,
+        stakeholderManagement: 0,
+        technicalExpertise: 0,
+        leadership: 0,
+        customerFocus: 0,
+        adaptability: 0,
+      },
+      requiredExperiences: [],
+      academicBackground: { minDegree: '', preferredFields: [], certifications: [] },
+      toolbox: [],
+      motivations: [],
+      painPoints: [],
+      weekInLife: [],
+    };
+    setProfile(emptyProfile);
+    setCandidates([]);
+    setSelectedCandidates(new Set());
+    setMatchWeights(DEFAULT_WEIGHTS);
+    setShowUpload(true);
+    setUploadTab('profile');
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -135,18 +164,28 @@ export function Dashboard() {
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => setShowUpload(!showUpload)}
-              className={cn(
-                'flex items-center gap-2 px-4 py-2 rounded-lg transition-colors',
-                showUpload
-                  ? 'bg-white text-sats-red'
-                  : 'bg-white/20 hover:bg-white/30'
-              )}
-            >
-              <Upload className="w-4 h-4" />
-              <span className="hidden sm:inline">Upload Profile</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleNewProject}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+                title="Start a new project with empty data"
+              >
+                <FilePlus className="w-4 h-4" />
+                <span className="hidden sm:inline">New Project</span>
+              </button>
+              <button
+                onClick={() => setShowUpload(!showUpload)}
+                className={cn(
+                  'flex items-center gap-2 px-4 py-2 rounded-lg transition-colors',
+                  showUpload
+                    ? 'bg-white text-sats-red'
+                    : 'bg-white/20 hover:bg-white/30'
+                )}
+              >
+                <Upload className="w-4 h-4" />
+                <span className="hidden sm:inline">Upload Profile</span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -244,6 +283,18 @@ export function Dashboard() {
                         {cert}
                       </span>
                     ))}
+                  </div>
+                )}
+
+                {/* Role Description */}
+                {profile.role.description && (
+                  <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <Info className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+                      <p className="text-sm text-gray-600 leading-relaxed">
+                        {profile.role.description}
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>

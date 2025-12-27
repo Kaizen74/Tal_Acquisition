@@ -3,8 +3,9 @@
  * Tests: WeightConfig -> calculateMatchScore -> MatchScore display
  */
 
-import { calculateMatchScore, DEFAULT_WEIGHTS, MatchWeights } from '../utils/calculateMatch';
-import type { SuccessProfile, CandidateProfile, CompetencyStats } from '../types';
+import { calculateMatchScore, DEFAULT_WEIGHTS } from '../utils/calculateMatch';
+import type { MatchWeights } from '../utils/calculateMatch';
+import type { SuccessProfile, CandidateProfile } from '../types';
 
 // Mock success profile
 const mockSuccessProfile: SuccessProfile = {

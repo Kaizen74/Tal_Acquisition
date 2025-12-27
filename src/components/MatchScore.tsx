@@ -44,7 +44,8 @@ export function MatchScore({
   };
 
   const circumference = 2 * Math.PI * 45;
-  const strokeDashoffset = circumference - (score.overall / 100) * circumference;
+  const cappedOverall = Math.min(100, score.overall);
+  const strokeDashoffset = circumference - (cappedOverall / 100) * circumference;
 
   return (
     <div className="flex flex-col items-center">
@@ -69,7 +70,7 @@ export function MatchScore({
             stroke="currentColor"
             strokeWidth="8"
             strokeLinecap="round"
-            className={getScoreColor(score.overall)}
+            className={getScoreColor(cappedOverall)}
             style={{
               strokeDasharray: circumference,
               strokeDashoffset,
@@ -79,9 +80,9 @@ export function MatchScore({
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span
-            className={cn('font-bold', sizeClasses[size].text, getScoreColor(score.overall))}
+            className={cn('font-bold', sizeClasses[size].text, getScoreColor(cappedOverall))}
           >
-            {score.overall}%
+            {cappedOverall}%
           </span>
           <span className={cn('text-gray-500', sizeClasses[size].label)}>
             Match
@@ -93,10 +94,10 @@ export function MatchScore({
       <div
         className={cn(
           'mt-2 px-3 py-1 rounded-full text-white text-sm font-medium',
-          getScoreBackground(score.overall)
+          getScoreBackground(cappedOverall)
         )}
       >
-        {getScoreLabel(score.overall)}
+        {getScoreLabel(cappedOverall)}
       </div>
 
       {/* Expandable breakdown */}
@@ -118,22 +119,22 @@ export function MatchScore({
             <div className="mt-2 space-y-2 bg-gray-50 rounded-lg p-3">
               <BreakdownBar
                 label="Attributes"
-                value={score.breakdown.competencies}
+                value={Math.min(100, score.breakdown.competencies)}
                 weight={`${score.weights?.attributes ?? 40}%`}
               />
               <BreakdownBar
                 label="Experiences"
-                value={score.breakdown.experiences}
+                value={Math.min(100, score.breakdown.experiences)}
                 weight={`${score.weights?.experiences ?? 30}%`}
               />
               <BreakdownBar
-                label="Skill Proficiency"
-                value={score.breakdown.tools}
+                label="Skill Proficiency (Tools)"
+                value={Math.min(100, score.breakdown.tools)}
                 weight={`${score.weights?.skillProficiency ?? 20}%`}
               />
               <BreakdownBar
                 label="Cultural Fit"
-                value={score.breakdown.cultural}
+                value={Math.min(100, score.breakdown.cultural)}
                 weight={`${score.weights?.culturalFit ?? 10}%`}
               />
             </div>
@@ -153,18 +154,19 @@ function BreakdownBar({
   value: number;
   weight: string;
 }) {
+  const cappedValue = Math.min(100, value);
   return (
     <div>
       <div className="flex justify-between text-xs text-gray-600 mb-1">
         <span>{label}</span>
         <span>
-          {value}% <span className="text-gray-400">({weight})</span>
+          {cappedValue}% <span className="text-gray-400">({weight})</span>
         </span>
       </div>
       <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
         <div
-          className={cn('h-full rounded-full transition-all duration-300', getScoreBackground(value))}
-          style={{ width: `${value}%` }}
+          className={cn('h-full rounded-full transition-all duration-300', getScoreBackground(cappedValue))}
+          style={{ width: `${cappedValue}%` }}
         />
       </div>
     </div>
