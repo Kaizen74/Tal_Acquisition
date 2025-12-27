@@ -59,12 +59,22 @@ function buildClaudePrompt(
   successProfile: SuccessProfileContext,
   fileName: string
 ): string {
+  // Build detailed experiences list with matching guidance
   const experiencesList = successProfile.requiredExperiences
-    .map((exp) => `- ${exp.name} (${exp.category}): ${exp.description}`)
+    .map((exp) => {
+      // Add matching hints for common experience types
+      const matchingHints = getExperienceMatchingHints(exp.name);
+      return `- "${exp.name}" (${exp.category}, ${exp.minYears}+ years): ${exp.description}
+    Look for: ${matchingHints}`;
+    })
     .join('\n');
 
+  // Build detailed tools list with matching guidance
   const toolsList = successProfile.toolbox
-    .flatMap((cat) => cat.tools.map((t) => `- ${t.name} (${cat.category})`))
+    .flatMap((cat) => cat.tools.map((t) => {
+      const matchingHints = getToolMatchingHints(t.name);
+      return `- "${t.name}" (${cat.category}): Look for: ${matchingHints}`;
+    }))
     .join('\n');
 
   // Build dynamic attributes list from attributeConfig
@@ -87,58 +97,120 @@ function buildClaudePrompt(
     "customerFocus": <0-100>,
     "adaptability": <0-100>`;
 
-  return `You are analyzing a resume to extract structured candidate data for a talent acquisition system. The role being evaluated is: "${successProfile.role.title}".
+  return `You are an expert HR analyst evaluating a resume against a success profile for the role: "${successProfile.role.title}".
 
 ## Resume Content:
 ${resumeText}
 
 ## Success Profile Requirements:
 
-### Required Experiences:
+### Required Experiences (match these from the resume):
 ${experiencesList}
 
-### Required Skill Proficiencies (Tools):
+### Required Skill Proficiencies/Tools (match these from the resume):
 ${toolsList}
 
-### Attribute Categories to Evaluate:
+### Attribute Categories to Score:
 ${attributesList}
 
-## Instructions:
-Analyze the resume and extract the following information. Be thorough in matching:
-- For EXPERIENCES: Mark as "achieved: true" if the candidate has relevant experience matching the required experience (look for similar job responsibilities, project work, or explicit mentions)
-- For SKILL PROFICIENCIES: Mark as "achieved: true" if the candidate mentions the tool/skill or has demonstrable experience with it (look for explicit mentions, related tools, or implied usage)
+## CRITICAL Matching Instructions:
+
+### For EXPERIENCES - Mark as "achieved: true" if ANY of these apply:
+1. The candidate has a job title that implies the experience (e.g., "Team Lead" = Team Management, "Consultant" = Consulting)
+2. The resume describes responsibilities matching the experience (e.g., "led a team of X people" = Team Management)
+3. The resume mentions projects or achievements related to the experience
+4. Use SEMANTIC matching - look for synonyms and related concepts, not just exact keywords
+
+### For SKILL PROFICIENCIES - Mark as "achieved: true" if ANY of these apply:
+1. The skill or tool is explicitly mentioned in the resume
+2. The candidate's job responsibilities clearly require using such a skill
+3. Related or equivalent tools/skills are mentioned
+4. The context of their work implies usage of the skill
+
+### IMPORTANT: Be GENEROUS in matching!
+- If a resume says "led team of 20 staff" → Team Management = achieved
+- If a resume says "Organization Effectiveness Consultant" → Consulting = achieved
+- If a resume says "led initiative to improve processes" → Process Improvement = achieved
+- If a resume says "partner with business leaders" → Stakeholder Engagement/Management = achieved
 
 Respond with ONLY a valid JSON object (no markdown, no explanation) in this exact format:
 {
   "name": "Full name of the candidate",
   "currentRole": "Current or most recent job title",
-  "yearsExperience": <number of years of professional experience>,
+  "yearsExperience": <total years of professional experience>,
   "attributes": {
 ${attributeKeysJson}
   },
   "experiences": [
     {
-      "name": "<exact name from required experiences>",
-      "achieved": <true if evidence found in resume, false otherwise>,
-      "relevance": "<brief explanation of evidence found or why not achieved>"
+      "name": "<EXACT name from required experiences above>",
+      "achieved": <true if ANY evidence found, false only if NO evidence>,
+      "relevance": "<quote or describe specific evidence from resume>"
     }
   ],
   "skillProficiencies": [
     {
-      "toolName": "<exact tool name from required tools>",
-      "achieved": <true if mentioned or implied in resume, false otherwise>,
-      "evidence": "<brief explanation of evidence found>"
+      "toolName": "<EXACT tool name from required tools above>",
+      "achieved": <true if ANY evidence found, false only if NO evidence>,
+      "evidence": "<quote or describe specific evidence from resume>"
     }
   ],
   "summary": "Brief 1-2 sentence summary of candidate fit"
 }
 
-Important:
-- Use the EXACT experience names and tool names from the success profile lists above
-- Include ALL required experiences and ALL required tools in your response
-- Be generous in matching - if the resume shows related experience or skills, mark as achieved
-- Attribute scores should reflect evidence in the resume (50 = average, 70+ = strong evidence, 85+ = exceptional)
-- If the candidate's name cannot be determined, use "${fileName.replace('.pdf', '')}"`;
+REQUIREMENTS:
+- Use the EXACT experience names and tool names as listed above (copy them exactly)
+- Include ALL required experiences and ALL required tools - do not skip any
+- Default to achieved=true if there's ANY reasonable evidence, even indirect
+- Attribute scores: 50=average, 70+=strong evidence, 85+=exceptional evidence in resume
+- If candidate name cannot be found, use "${fileName.replace('.pdf', '')}"`;
+}
+
+// Helper function to provide matching hints for experience types
+function getExperienceMatchingHints(experienceName: string): string {
+  const hints: Record<string, string> = {
+    'team management': 'led team, managed team, supervised staff, team lead, manager of X people, head of team',
+    'consulting': 'consultant, advisory, advised clients, provided guidance, strategic counsel, client engagement',
+    'process improvement': 'improved processes, optimization, efficiency initiatives, streamlined operations, transformation, redesign',
+    'change management': 'led change, transformation, organizational change, guided transition, change initiative',
+    'stakeholder management': 'stakeholder engagement, partner with leaders, executive relationships, business partners',
+    'customer support systems': 'CRM, ticketing, helpdesk, support platform, service desk',
+    'multilingual support': 'multiple languages, bilingual, international support, global team',
+    'data-driven decision making': 'analytics, KPIs, metrics, data analysis, reporting, dashboards',
+    'leadership': 'led, managed, directed, headed, supervised, oversaw team',
+    'technical': 'technical skills, systems, platforms, tools, technology',
+  };
+
+  const key = experienceName.toLowerCase();
+  for (const [hintKey, hintValue] of Object.entries(hints)) {
+    if (key.includes(hintKey) || hintKey.includes(key)) {
+      return hintValue;
+    }
+  }
+  return 'related job titles, responsibilities, projects, or achievements';
+}
+
+// Helper function to provide matching hints for tools/skills
+function getToolMatchingHints(toolName: string): string {
+  const hints: Record<string, string> = {
+    'email support': 'email, correspondence, written communication, Outlook, Gmail',
+    'phone support': 'phone, calls, telephone, voice support, call center',
+    'chat support': 'chat, live chat, instant messaging, online support',
+    'kpi dashboard': 'KPIs, dashboards, metrics, performance tracking, analytics',
+    'customer satisfaction surveys': 'CSAT, NPS, surveys, customer feedback, satisfaction metrics',
+    'crm system': 'CRM, Salesforce, customer relationship, client database',
+    'ticketing system': 'tickets, helpdesk, Zendesk, ServiceNow, JIRA Service',
+    'knowledge base management': 'knowledge base, documentation, wiki, help articles',
+    'stakeholder engagement': 'stakeholder, business partners, executive communication, leadership engagement, partner with leaders',
+  };
+
+  const key = toolName.toLowerCase();
+  for (const [hintKey, hintValue] of Object.entries(hints)) {
+    if (key.includes(hintKey) || hintKey.includes(key)) {
+      return hintValue;
+    }
+  }
+  return 'explicit mentions, related tools, or implied usage from job context';
 }
 
 async function callClaudeAPI(
