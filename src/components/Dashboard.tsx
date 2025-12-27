@@ -30,6 +30,7 @@ import { WeightConfig } from './WeightConfig';
 import { AttributeScoreEditor } from './AttributeScoreEditor';
 import { CulturalFitAssessment } from './CulturalFitAssessment';
 import { CulturalFitConfig } from './CulturalFitConfig';
+import { InterviewComments } from './InterviewComments';
 import { exampleProfile } from '../data/successProfile';
 import { candidateProfiles as initialCandidates } from '../data/candidateProfiles';
 import { calculateMatchScore, DEFAULT_WEIGHTS } from '../utils/calculateMatch';
@@ -50,6 +51,7 @@ export function Dashboard() {
   const [editingCandidateIndex, setEditingCandidateIndex] = useState<number | null>(null);
   const [assessingCulturalFitIndex, setAssessingCulturalFitIndex] = useState<number | null>(null);
   const [showCulturalFitConfig, setShowCulturalFitConfig] = useState(false);
+  const [editingCommentsIndex, setEditingCommentsIndex] = useState<number | null>(null);
 
   // Colors for candidates (matching RadarChart)
   const candidateColors = [
@@ -174,6 +176,19 @@ export function Dashboard() {
       motivations,
       painPoints,
     }));
+  };
+
+  // Handle interview comments save
+  const handleCommentsSave = (comments: string) => {
+    if (editingCommentsIndex === null) return;
+    setCandidates((prev) => {
+      const updated = [...prev];
+      updated[editingCommentsIndex] = {
+        ...updated[editingCommentsIndex],
+        interviewComments: comments,
+      };
+      return updated;
+    });
   };
 
   // Reset to empty state for new project
@@ -618,6 +633,7 @@ export function Dashboard() {
                 onToggleSelect={() => toggleCandidate(index)}
                 onEditScores={() => setEditingCandidateIndex(index)}
                 onAssessCulturalFit={() => setAssessingCulturalFitIndex(index)}
+                onEditComments={() => setEditingCommentsIndex(index)}
               />
             ))}
           </div>
@@ -676,6 +692,15 @@ export function Dashboard() {
           painPoints={profile.painPoints}
           onSave={handleCulturalFitConfigSave}
           onClose={() => setShowCulturalFitConfig(false)}
+        />
+      )}
+
+      {/* Interview Comments Modal */}
+      {editingCommentsIndex !== null && candidates[editingCommentsIndex] && (
+        <InterviewComments
+          candidate={candidates[editingCommentsIndex]}
+          onSave={handleCommentsSave}
+          onClose={() => setEditingCommentsIndex(null)}
         />
       )}
     </div>

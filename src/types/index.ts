@@ -97,6 +97,7 @@ export interface CandidateProfile extends SuccessProfile {
   personalInfo: PersonalInfo;
   matchScore: MatchScore;
   culturalFitAssessment?: CulturalFitAssessment; // Manual cultural fit assessment
+  interviewComments?: string; // Free text interview comments from talent acquisition lead
 }
 
 export type BadgeStatus = 'achieved' | 'missing' | 'partial';

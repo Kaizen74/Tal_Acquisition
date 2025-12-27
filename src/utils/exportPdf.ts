@@ -440,7 +440,40 @@ export function exportResultsToPdf(options: ExportOptions): void {
       tableWidth: 'wrap',
     });
 
-    yPos = doc.lastAutoTable.finalY + 10;
+    yPos = doc.lastAutoTable.finalY + 6;
+
+    // Interview Comments (if any)
+    if (candidate.interviewComments && candidate.interviewComments.trim()) {
+      // Check if we need a new page for comments
+      if (yPos > 250) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      doc.setFillColor(240, 249, 255); // light blue background
+      const commentLines = doc.splitTextToSize(candidate.interviewComments, pageWidth - 60);
+      const commentBoxHeight = Math.max(commentLines.length * 4 + 12, 20);
+
+      doc.roundedRect(40, yPos, pageWidth - 54, commentBoxHeight, 2, 2, 'F');
+      doc.setDrawColor(147, 197, 253); // blue border
+      doc.setLineWidth(0.3);
+      doc.roundedRect(40, yPos, pageWidth - 54, commentBoxHeight, 2, 2, 'S');
+
+      yPos += 6;
+      doc.setTextColor(...COLORS.secondary);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Interview Comments:', 44, yPos);
+      yPos += 5;
+
+      doc.setFont('helvetica', 'italic');
+      doc.setTextColor(...COLORS.navy);
+      doc.setFontSize(8);
+      doc.text(commentLines, 44, yPos);
+      yPos += commentLines.length * 4 + 5;
+    }
+
+    yPos += 4;
   });
 
   // ==========================================

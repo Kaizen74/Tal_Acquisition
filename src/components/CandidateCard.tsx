@@ -5,7 +5,7 @@ import {
   Radar,
   ResponsiveContainer,
 } from 'recharts';
-import { Eye, EyeOff, Briefcase, Calendar, Edit2, Heart } from 'lucide-react';
+import { Eye, EyeOff, Briefcase, Calendar, Edit2, Heart, MessageSquare } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { Avatar } from './Avatar';
 import type { CandidateProfile, SuccessProfile } from '../types';
@@ -18,6 +18,7 @@ interface CandidateCardProps {
   onToggleSelect: () => void;
   onEditScores?: () => void;
   onAssessCulturalFit?: () => void;
+  onEditComments?: () => void;
 }
 
 // Helper to get abbreviated label for mini radar chart
@@ -52,6 +53,7 @@ export function CandidateCard({
   onToggleSelect,
   onEditScores,
   onAssessCulturalFit,
+  onEditComments,
 }: CandidateCardProps) {
   // Use attributeConfig for dynamic labels, fall back to competencyStats keys
   const attributeKeys = successProfile.attributeConfig?.length > 0
@@ -125,6 +127,20 @@ export function CandidateCard({
             >
               <Heart className={cn('w-4 h-4', candidate.culturalFitAssessment && 'fill-current')} />
               {!candidate.culturalFitAssessment && <span>Assess</span>}
+            </button>
+          )}
+          {onEditComments && (
+            <button
+              onClick={onEditComments}
+              className={cn(
+                'p-2 rounded-lg transition-colors',
+                candidate.interviewComments
+                  ? 'bg-sats-blue/10 text-sats-blue hover:bg-sats-blue hover:text-white'
+                  : 'bg-gray-100 text-gray-500 hover:bg-sats-blue hover:text-white'
+              )}
+              title={candidate.interviewComments ? 'Edit interview comments' : 'Add interview comments'}
+            >
+              <MessageSquare className={cn('w-4 h-4', candidate.interviewComments && 'fill-current')} />
             </button>
           )}
           {onEditScores && (
@@ -262,6 +278,28 @@ export function CandidateCard({
           </div>
         )}
       </div>
+
+      {/* Interview Comments Preview */}
+      {candidate.interviewComments && (
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <div className="flex items-start gap-2">
+            <MessageSquare className="w-4 h-4 text-sats-blue flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-gray-600 line-clamp-2">
+                {candidate.interviewComments}
+              </p>
+              {onEditComments && (
+                <button
+                  onClick={onEditComments}
+                  className="text-xs text-sats-blue hover:underline mt-1"
+                >
+                  View full comments →
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
