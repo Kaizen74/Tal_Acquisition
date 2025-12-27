@@ -16,6 +16,7 @@ import {
   FilePlus,
   Info,
   Settings,
+  Download,
 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { RadarChart } from './RadarChart';
@@ -32,6 +33,7 @@ import { CulturalFitConfig } from './CulturalFitConfig';
 import { exampleProfile } from '../data/successProfile';
 import { candidateProfiles as initialCandidates } from '../data/candidateProfiles';
 import { calculateMatchScore, DEFAULT_WEIGHTS } from '../utils/calculateMatch';
+import { exportResultsToPdf } from '../utils/exportPdf';
 import type { SuccessProfile, CandidateProfile, MatchWeights, CulturalFitAssessment as CulturalFitAssessmentType } from '../types';
 import { cn } from '../utils/cn';
 
@@ -195,6 +197,20 @@ export function Dashboard() {
     setUploadTab('profile');
   };
 
+  // Export results to PDF
+  const handleExportPdf = () => {
+    if (candidates.length === 0) {
+      alert('No candidates to export. Please upload candidate resumes first.');
+      return;
+    }
+    exportResultsToPdf({
+      profile,
+      candidates,
+      weights: matchWeights,
+      selectedIndices: Array.from(selectedCandidates),
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -234,6 +250,20 @@ export function Dashboard() {
               >
                 <Upload className="w-4 h-4" />
                 <span className="hidden sm:inline">Upload Profile</span>
+              </button>
+              <button
+                onClick={handleExportPdf}
+                disabled={candidates.length === 0}
+                className={cn(
+                  'flex items-center gap-2 px-4 py-2 rounded-lg transition-colors',
+                  candidates.length > 0
+                    ? 'bg-sats-green hover:bg-sats-green/90 text-white'
+                    : 'bg-white/10 text-white/50 cursor-not-allowed'
+                )}
+                title="Export results to PDF"
+              >
+                <Download className="w-4 h-4" />
+                <span className="hidden sm:inline">Export PDF</span>
               </button>
             </div>
           </div>
