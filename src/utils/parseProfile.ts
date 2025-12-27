@@ -60,8 +60,8 @@ export function parseProfileCSV(csvContent: string): SuccessProfile | null {
       badgeIcon: row.badgeIcon || 'Award',
     }));
 
-    // Parse tools
-    const toolRows = data.filter((row) => row.section === 'tool');
+    // Parse skill proficiency (tools) - supports both new 'skillProficiency' and old 'tool' section names
+    const toolRows = data.filter((row) => row.section === 'skillProficiency' || row.section === 'tool');
     const toolCategoriesMap: { [key: string]: ToolCategory } = {};
     toolRows.forEach((row) => {
       const category = row.category || 'Other';
