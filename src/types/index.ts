@@ -82,9 +82,21 @@ export interface MatchScore {
   weights?: MatchWeights;
 }
 
+export interface CulturalFitAssessment {
+  score: number; // 0-100 overall cultural fit score
+  assessedAt: string; // ISO date string
+  assessedBy?: string; // Optional assessor name
+  notes?: string; // Optional notes
+  criteriaRatings?: { // Individual ratings per motivation/criterion
+    criterion: string;
+    rating: number; // 1-5 scale
+  }[];
+}
+
 export interface CandidateProfile extends SuccessProfile {
   personalInfo: PersonalInfo;
   matchScore: MatchScore;
+  culturalFitAssessment?: CulturalFitAssessment; // Manual cultural fit assessment
 }
 
 export type BadgeStatus = 'achieved' | 'missing' | 'partial';

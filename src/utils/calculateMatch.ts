@@ -95,11 +95,17 @@ function calculateToolMatch(
   return Math.round((achievedCount / totalRequired) * 100);
 }
 
-// Calculate cultural fit based on matching motivations and pain points
+// Calculate cultural fit - use manual assessment if available, otherwise auto-calculate
 function calculateCulturalFit(
   profile: SuccessProfile,
   candidate: CandidateProfile
 ): number {
+  // If candidate has a manual cultural fit assessment, use that score
+  if (candidate.culturalFitAssessment && candidate.culturalFitAssessment.score > 0) {
+    return candidate.culturalFitAssessment.score;
+  }
+
+  // Fallback: auto-calculate based on matching motivations (usually 0 for resume uploads)
   const profileMotivations = new Set(
     profile.motivations.map((m) => m.toLowerCase())
   );

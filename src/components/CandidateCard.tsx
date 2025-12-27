@@ -5,7 +5,7 @@ import {
   Radar,
   ResponsiveContainer,
 } from 'recharts';
-import { Eye, EyeOff, Briefcase, Calendar, Edit2 } from 'lucide-react';
+import { Eye, EyeOff, Briefcase, Calendar, Edit2, Heart } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { Avatar } from './Avatar';
 import type { CandidateProfile, SuccessProfile } from '../types';
@@ -17,6 +17,7 @@ interface CandidateCardProps {
   selectionColor?: string;
   onToggleSelect: () => void;
   onEditScores?: () => void;
+  onAssessCulturalFit?: () => void;
 }
 
 // Helper to get abbreviated label for mini radar chart
@@ -50,6 +51,7 @@ export function CandidateCard({
   selectionColor,
   onToggleSelect,
   onEditScores,
+  onAssessCulturalFit,
 }: CandidateCardProps) {
   // Use attributeConfig for dynamic labels, fall back to competencyStats keys
   const attributeKeys = successProfile.attributeConfig?.length > 0
@@ -110,6 +112,20 @@ export function CandidateCard({
           </div>
         </div>
         <div className="flex items-center gap-1">
+          {onAssessCulturalFit && (
+            <button
+              onClick={onAssessCulturalFit}
+              className={cn(
+                'p-2 rounded-lg transition-colors',
+                candidate.culturalFitAssessment
+                  ? 'bg-sats-purple/10 text-sats-purple hover:bg-sats-purple hover:text-white'
+                  : 'bg-gray-100 text-gray-500 hover:bg-sats-purple hover:text-white'
+              )}
+              title={candidate.culturalFitAssessment ? 'Edit cultural fit assessment' : 'Assess cultural fit'}
+            >
+              <Heart className={cn('w-4 h-4', candidate.culturalFitAssessment && 'fill-current')} />
+            </button>
+          )}
           {onEditScores && (
             <button
               onClick={onEditScores}
@@ -203,7 +219,7 @@ export function CandidateCard({
       </div>
 
       {/* Quick stats */}
-      <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-100">
+      <div className="grid grid-cols-4 gap-2 mt-3 pt-3 border-t border-gray-100">
         <div className="text-center p-2 bg-gray-50 rounded">
           <div className="text-xs text-gray-500">Attributes</div>
           <div className="font-semibold text-sats-blue">
@@ -220,6 +236,15 @@ export function CandidateCard({
           <div className="text-xs text-gray-500">Skills</div>
           <div className="font-semibold text-sats-purple">
             {candidate.matchScore.breakdown.tools}%
+          </div>
+        </div>
+        <div className="text-center p-2 bg-gray-50 rounded">
+          <div className="text-xs text-gray-500">Cultural</div>
+          <div className={cn(
+            'font-semibold',
+            candidate.culturalFitAssessment ? 'text-sats-orange' : 'text-gray-400'
+          )}>
+            {candidate.matchScore.breakdown.cultural}%
           </div>
         </div>
       </div>

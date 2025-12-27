@@ -26,10 +26,11 @@ import { FileUpload } from './FileUpload';
 import { ResumeUpload } from './ResumeUpload';
 import { WeightConfig } from './WeightConfig';
 import { AttributeScoreEditor } from './AttributeScoreEditor';
+import { CulturalFitAssessment } from './CulturalFitAssessment';
 import { exampleProfile } from '../data/successProfile';
 import { candidateProfiles as initialCandidates } from '../data/candidateProfiles';
 import { calculateMatchScore, DEFAULT_WEIGHTS } from '../utils/calculateMatch';
-import type { SuccessProfile, CandidateProfile, MatchWeights } from '../types';
+import type { SuccessProfile, CandidateProfile, MatchWeights, CulturalFitAssessment as CulturalFitAssessmentType } from '../types';
 import { cn } from '../utils/cn';
 
 export function Dashboard() {
@@ -43,6 +44,7 @@ export function Dashboard() {
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [matchWeights, setMatchWeights] = useState<MatchWeights>(DEFAULT_WEIGHTS);
   const [editingCandidateIndex, setEditingCandidateIndex] = useState<number | null>(null);
+  const [assessingCulturalFitIndex, setAssessingCulturalFitIndex] = useState<number | null>(null);
 
   // Colors for candidates (matching RadarChart)
   const candidateColors = [
@@ -133,6 +135,29 @@ export function Dashboard() {
     setCandidates((prev) => {
       const updated = [...prev];
       updated[editingCandidateIndex] = candidateWithScore;
+      return updated;
+    });
+  };
+
+  // Handle cultural fit assessment save
+  const handleCulturalFitSave = (assessment: CulturalFitAssessmentType) => {
+    if (assessingCulturalFitIndex === null) return;
+
+    const candidate = candidates[assessingCulturalFitIndex];
+    const updatedCandidate = {
+      ...candidate,
+      culturalFitAssessment: assessment,
+    };
+
+    // Recalculate match score with the new cultural fit assessment
+    const candidateWithScore = {
+      ...updatedCandidate,
+      matchScore: calculateMatchScore(profile, updatedCandidate, matchWeights),
+    };
+
+    setCandidates((prev) => {
+      const updated = [...prev];
+      updated[assessingCulturalFitIndex] = candidateWithScore;
       return updated;
     });
   };
@@ -517,6 +542,7 @@ export function Dashboard() {
                 selectionColor={getCandidateColor(index)}
                 onToggleSelect={() => toggleCandidate(index)}
                 onEditScores={() => setEditingCandidateIndex(index)}
+                onAssessCulturalFit={() => setAssessingCulturalFitIndex(index)}
               />
             ))}
           </div>
@@ -554,6 +580,17 @@ export function Dashboard() {
           profileAttributeConfig={profile.attributeConfig || []}
           onSave={handleCandidateScoreUpdate}
           onClose={() => setEditingCandidateIndex(null)}
+        />
+      )}
+
+      {/* Cultural Fit Assessment Modal */}
+      {assessingCulturalFitIndex !== null && candidates[assessingCulturalFitIndex] && (
+        <CulturalFitAssessment
+          candidate={candidates[assessingCulturalFitIndex]}
+          motivations={profile.motivations}
+          painPoints={profile.painPoints}
+          onSave={handleCulturalFitSave}
+          onClose={() => setAssessingCulturalFitIndex(null)}
         />
       )}
     </div>
