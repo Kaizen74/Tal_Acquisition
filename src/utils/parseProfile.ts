@@ -84,7 +84,7 @@ export function parseProfileCSV(csvContent: string): SuccessProfile | null {
       name: row.name || '',
       description: row.description || '',
       minYears: parseInt(row.minYears, 10) || 0,
-      achieved: row.achieved === 'true',
+      achieved: row.achieved?.toLowerCase() === 'true',
       badgeIcon: row.badgeIcon || 'Award',
     }));
 
@@ -99,7 +99,8 @@ export function parseProfileCSV(csvContent: string): SuccessProfile | null {
       toolCategoriesMap[category].tools.push({
         name: row.name || '',
         proficiency: parseInt(row.proficiency, 10) || 0,
-        isRequired: row.isRequired === 'true',
+        isRequired: row.isRequired?.toLowerCase() === 'true',
+        achieved: row.isRequired?.toLowerCase() === 'true', // For success profile, required tools start as achieved
       });
     });
     const toolbox: ToolCategory[] = Object.values(toolCategoriesMap);

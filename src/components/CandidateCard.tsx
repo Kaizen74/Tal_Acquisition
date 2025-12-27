@@ -203,7 +203,7 @@ export function CandidateCard({
       </div>
 
       {/* Quick stats */}
-      <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100">
+      <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-100">
         <div className="text-center p-2 bg-gray-50 rounded">
           <div className="text-xs text-gray-500">Attributes</div>
           <div className="font-semibold text-sats-blue">
@@ -214,6 +214,12 @@ export function CandidateCard({
           <div className="text-xs text-gray-500">Experience</div>
           <div className="font-semibold text-sats-green">
             {candidate.matchScore.breakdown.experiences}%
+          </div>
+        </div>
+        <div className="text-center p-2 bg-gray-50 rounded">
+          <div className="text-xs text-gray-500">Skills</div>
+          <div className="font-semibold text-sats-purple">
+            {candidate.matchScore.breakdown.tools}%
           </div>
         </div>
       </div>
