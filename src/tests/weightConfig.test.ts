@@ -18,6 +18,14 @@ const mockSuccessProfile: SuccessProfile = {
     customerFocus: 90,
     adaptability: 80,
   },
+  attributeConfig: [
+    { key: 'problemSolving', label: 'Problem Solving', value: 80 },
+    { key: 'stakeholderManagement', label: 'Stakeholder Mgmt', value: 75 },
+    { key: 'technicalExpertise', label: 'Technical', value: 85 },
+    { key: 'leadership', label: 'Leadership', value: 70 },
+    { key: 'customerFocus', label: 'Customer Focus', value: 90 },
+    { key: 'adaptability', label: 'Adaptability', value: 80 },
+  ],
   requiredExperiences: [
     { category: 'Leadership', name: 'Team Management', description: 'Led teams', minYears: 3, achieved: false, badgeIcon: 'Users' },
     { category: 'Technical', name: 'System Design', description: 'Designed systems', minYears: 2, achieved: false, badgeIcon: 'Database' },

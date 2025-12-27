@@ -76,13 +76,13 @@ export function FileUpload({ onProfileLoaded, currentProfile }: FileUploadProps)
 
   const downloadTemplate = () => {
     const templateContent = `section,key,value,name,description,category,minYears,achieved,badgeIcon,proficiency,isRequired,seniority,objective,minDegree,preferredFields,certifications
-role,,Customer & Technical Support Team Lead,,,,,,,,,JG2-JG3 equivalent,Support Paladin,,,
-attribute,problemSolving,85,,,,,,,,,,,,
-attribute,stakeholderManagement,90,,,,,,,,,,,,
-attribute,technicalExpertise,75,,,,,,,,,,,,
-attribute,leadership,80,,,,,,,,,,,,
-attribute,customerFocus,95,,,,,,,,,,,,
-attribute,adaptability,85,,,,,,,,,,,,
+role,,Customer & Technical Support Team Lead,,Lead and manage the customer support team.,,,,,,,JG2-JG3 equivalent,Support Paladin,,,
+attribute,problemSolving,85,Problem Solving,,,,,,,,,,,
+attribute,stakeholderManagement,90,Stakeholder Mgmt,,,,,,,,,,,
+attribute,technicalExpertise,75,Technical Expertise,,,,,,,,,,,
+attribute,leadership,80,Leadership,,,,,,,,,,,
+attribute,customerFocus,95,Customer Focus,,,,,,,,,,,
+attribute,adaptability,85,Adaptability,,,,,,,,,,,
 experience,,,Team Management,Led cross-functional support team,Leadership,3,true,Users,,,,,,
 experience,,,Customer Support Systems,Experience with CRM and ticketing systems,Technical,5,true,Headphones,,,,,,
 experience,,,Process Improvement,Implemented operational efficiency initiatives,Operations,2,false,TrendingUp,,,,,,

@@ -14,6 +14,14 @@ export const exampleProfile: SuccessProfile = {
     customerFocus: 95,
     adaptability: 85,
   },
+  attributeConfig: [
+    { key: 'problemSolving', label: 'Problem Solving', value: 85 },
+    { key: 'stakeholderManagement', label: 'Stakeholder Mgmt', value: 90 },
+    { key: 'technicalExpertise', label: 'Technical', value: 75 },
+    { key: 'leadership', label: 'Leadership', value: 80 },
+    { key: 'customerFocus', label: 'Customer Focus', value: 95 },
+    { key: 'adaptability', label: 'Adaptability', value: 85 },
+  ],
   requiredExperiences: [
     {
       category: 'Leadership',

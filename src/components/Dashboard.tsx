@@ -25,6 +25,7 @@ import { CandidateCard } from './CandidateCard';
 import { FileUpload } from './FileUpload';
 import { ResumeUpload } from './ResumeUpload';
 import { WeightConfig } from './WeightConfig';
+import { AttributeScoreEditor } from './AttributeScoreEditor';
 import { exampleProfile } from '../data/successProfile';
 import { candidateProfiles as initialCandidates } from '../data/candidateProfiles';
 import { calculateMatchScore, DEFAULT_WEIGHTS } from '../utils/calculateMatch';
@@ -41,6 +42,7 @@ export function Dashboard() {
   const [uploadTab, setUploadTab] = useState<'profile' | 'resumes'>('resumes');
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [matchWeights, setMatchWeights] = useState<MatchWeights>(DEFAULT_WEIGHTS);
+  const [editingCandidateIndex, setEditingCandidateIndex] = useState<number | null>(null);
 
   // Colors for candidates (matching RadarChart)
   const candidateColors = [
@@ -118,18 +120,29 @@ export function Dashboard() {
     setMatchWeights(newWeights);
   };
 
+  // Handle updated candidate scores from AttributeScoreEditor
+  const handleCandidateScoreUpdate = (updatedCandidate: CandidateProfile) => {
+    if (editingCandidateIndex === null) return;
+
+    // Recalculate match score with updated stats
+    const candidateWithScore = {
+      ...updatedCandidate,
+      matchScore: calculateMatchScore(profile, updatedCandidate, matchWeights),
+    };
+
+    setCandidates((prev) => {
+      const updated = [...prev];
+      updated[editingCandidateIndex] = candidateWithScore;
+      return updated;
+    });
+  };
+
   // Reset to empty state for new project
   const handleNewProject = () => {
     const emptyProfile: SuccessProfile = {
       role: { title: '', level: '', class: '', description: '' },
-      competencyStats: {
-        problemSolving: 0,
-        stakeholderManagement: 0,
-        technicalExpertise: 0,
-        leadership: 0,
-        customerFocus: 0,
-        adaptability: 0,
-      },
+      competencyStats: {},
+      attributeConfig: [],
       requiredExperiences: [],
       academicBackground: { minDegree: '', preferredFields: [], certifications: [] },
       toolbox: [],
@@ -400,6 +413,7 @@ export function Dashboard() {
             >
               <RadarChart
                 profileStats={profile.competencyStats}
+                attributeConfig={profile.attributeConfig}
                 candidates={selectedCandidatesData}
               />
             </div>
@@ -498,6 +512,7 @@ export function Dashboard() {
                 isSelected={selectedCandidates.has(index)}
                 selectionColor={getCandidateColor(index)}
                 onToggleSelect={() => toggleCandidate(index)}
+                onEditScores={() => setEditingCandidateIndex(index)}
               />
             ))}
           </div>
@@ -527,6 +542,16 @@ export function Dashboard() {
           </p>
         </div>
       </footer>
+
+      {/* Attribute Score Editor Modal */}
+      {editingCandidateIndex !== null && candidates[editingCandidateIndex] && (
+        <AttributeScoreEditor
+          candidate={candidates[editingCandidateIndex]}
+          profileAttributeConfig={profile.attributeConfig || []}
+          onSave={handleCandidateScoreUpdate}
+          onClose={() => setEditingCandidateIndex(null)}
+        />
+      )}
     </div>
   );
 }

@@ -1,10 +1,13 @@
+// Dynamic attribute configuration
+export interface AttributeConfig {
+  key: string;
+  label: string;
+  value: number;
+}
+
+// Legacy interface for backward compatibility (will be deprecated)
 export interface CompetencyStats {
-  problemSolving: number;
-  stakeholderManagement: number;
-  technicalExpertise: number;
-  leadership: number;
-  customerFocus: number;
-  adaptability: number;
+  [key: string]: number;
 }
 
 export interface RequiredExperience {
@@ -41,6 +44,7 @@ export interface SuccessProfile {
     description?: string;
   };
   competencyStats: CompetencyStats;
+  attributeConfig: AttributeConfig[]; // Dynamic attribute labels
   requiredExperiences: RequiredExperience[];
   academicBackground: AcademicBackground;
   toolbox: ToolCategory[];

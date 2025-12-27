@@ -5,10 +5,10 @@ import {
   Radar,
   ResponsiveContainer,
 } from 'recharts';
-import { Eye, EyeOff, Briefcase, Calendar } from 'lucide-react';
+import { Eye, EyeOff, Briefcase, Calendar, Edit2 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { Avatar } from './Avatar';
-import type { CandidateProfile, CompetencyStats, SuccessProfile } from '../types';
+import type { CandidateProfile, SuccessProfile } from '../types';
 
 interface CandidateCardProps {
   candidate: CandidateProfile;
@@ -16,16 +16,18 @@ interface CandidateCardProps {
   isSelected: boolean;
   selectionColor?: string;
   onToggleSelect: () => void;
+  onEditScores?: () => void;
 }
 
-const statLabels: Record<keyof CompetencyStats, string> = {
-  problemSolving: 'PS',
-  stakeholderManagement: 'SM',
-  technicalExpertise: 'TE',
-  leadership: 'L',
-  customerFocus: 'CF',
-  adaptability: 'A',
-};
+// Helper to get abbreviated label for mini radar chart
+function getAbbreviatedLabel(label: string): string {
+  // Create abbreviation from first letters of each word
+  const words = label.split(/\s+/);
+  if (words.length === 1) {
+    return label.substring(0, 2).toUpperCase();
+  }
+  return words.map(w => w[0]).join('').toUpperCase();
+}
 
 function getScoreColor(score: number): string {
   if (score >= 90) return 'text-yellow-500 border-yellow-400';
@@ -47,15 +49,24 @@ export function CandidateCard({
   isSelected,
   selectionColor,
   onToggleSelect,
+  onEditScores,
 }: CandidateCardProps) {
-  const data = (
-    Object.keys(successProfile.competencyStats) as Array<keyof CompetencyStats>
-  ).map((key) => ({
-    subject: statLabels[key],
-    profile: successProfile.competencyStats[key],
-    candidate: candidate.competencyStats[key],
-    fullMark: 100,
-  }));
+  // Use attributeConfig for dynamic labels, fall back to competencyStats keys
+  const attributeKeys = successProfile.attributeConfig?.length > 0
+    ? successProfile.attributeConfig.map(c => c.key)
+    : Object.keys(successProfile.competencyStats);
+
+  const data = attributeKeys.map((key) => {
+    // Get label from attributeConfig or generate from key
+    const config = successProfile.attributeConfig?.find(c => c.key === key);
+    const label = config?.label || key;
+    return {
+      subject: getAbbreviatedLabel(label),
+      profile: successProfile.competencyStats[key] || 0,
+      candidate: candidate.competencyStats[key] || 0,
+      fullMark: 100,
+    };
+  });
 
   // Use selection color for border when selected
   const borderStyle = isSelected && selectionColor
@@ -98,23 +109,34 @@ export function CandidateCard({
             </p>
           </div>
         </div>
-        <button
-          onClick={onToggleSelect}
-          className={cn(
-            'p-2 rounded-lg transition-colors',
-            isSelected
-              ? 'text-white'
-              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+        <div className="flex items-center gap-1">
+          {onEditScores && (
+            <button
+              onClick={onEditScores}
+              className="p-2 rounded-lg bg-gray-100 text-gray-500 hover:bg-sats-blue hover:text-white transition-colors"
+              title="Edit attribute scores"
+            >
+              <Edit2 className="w-4 h-4" />
+            </button>
           )}
-          style={isSelected && selectionColor ? { backgroundColor: selectionColor } : {}}
-          title={isSelected ? 'Hide from comparison' : 'Show in comparison'}
-        >
-          {isSelected ? (
-            <Eye className="w-4 h-4" />
-          ) : (
-            <EyeOff className="w-4 h-4" />
-          )}
-        </button>
+          <button
+            onClick={onToggleSelect}
+            className={cn(
+              'p-2 rounded-lg transition-colors',
+              isSelected
+                ? 'text-white'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            )}
+            style={isSelected && selectionColor ? { backgroundColor: selectionColor } : {}}
+            title={isSelected ? 'Hide from comparison' : 'Show in comparison'}
+          >
+            {isSelected ? (
+              <Eye className="w-4 h-4" />
+            ) : (
+              <EyeOff className="w-4 h-4" />
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Experience info */}

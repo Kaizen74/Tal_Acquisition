@@ -1,4 +1,4 @@
-import type { CandidateProfile, CompetencyStats, ToolCategory } from '../types';
+import type { CandidateProfile, CompetencyStats, ToolCategory, AttributeConfig } from '../types';
 import { extractTextFromPDF } from './parseResume';
 
 interface SuccessProfileContext {
@@ -11,6 +11,7 @@ interface SuccessProfileContext {
     badgeIcon: string;
   }>;
   toolbox: ToolCategory[];
+  attributeConfig?: AttributeConfig[];
 }
 
 interface ClaudeResumeResponse {
@@ -222,6 +223,13 @@ function buildCandidateProfile(
     }),
   }));
 
+  // Build attributeConfig from competencyStats
+  const attributeConfig = Object.entries(competencyStats).map(([key, value]) => ({
+    key,
+    label: successProfile.attributeConfig?.find(a => a.key === key)?.label || key,
+    value,
+  }));
+
   return {
     personalInfo: {
       name: claudeResponse.name || 'Unknown Candidate',
@@ -230,6 +238,7 @@ function buildCandidateProfile(
     },
     role: successProfile.role,
     competencyStats,
+    attributeConfig,
     requiredExperiences,
     academicBackground: {
       minDegree: '',

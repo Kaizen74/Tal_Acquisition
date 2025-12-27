@@ -1,5 +1,33 @@
 import Papa from 'papaparse';
-import type { SuccessProfile, CandidateProfile, CompetencyStats, ToolCategory } from '../types';
+import type { SuccessProfile, CandidateProfile, CompetencyStats, ToolCategory, AttributeConfig } from '../types';
+
+// Default labels for common attribute keys (used when no label is provided in CSV)
+const defaultAttributeLabels: Record<string, string> = {
+  problemSolving: 'Problem Solving',
+  stakeholderManagement: 'Stakeholder Mgmt',
+  technicalExpertise: 'Technical',
+  leadership: 'Leadership',
+  customerFocus: 'Customer Focus',
+  adaptability: 'Adaptability',
+  resilience: 'Resilience',
+  communication: 'Communication',
+  teamwork: 'Teamwork',
+  creativity: 'Creativity',
+  analyticalThinking: 'Analytical Thinking',
+  decisionMaking: 'Decision Making',
+};
+
+// Helper to convert key to readable label
+function keyToLabel(key: string): string {
+  if (defaultAttributeLabels[key]) {
+    return defaultAttributeLabels[key];
+  }
+  // Convert camelCase to Title Case with spaces
+  return key
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, (str) => str.toUpperCase())
+    .trim();
+}
 
 interface CSVRow {
   [key: string]: string;
@@ -32,20 +60,20 @@ export function parseProfileCSV(csvContent: string): SuccessProfile | null {
         }
       : { title: '', level: '', class: '', description: '' };
 
-    // Parse attribute stats (also supports old 'competency' section name)
+    // Parse attribute stats dynamically (also supports old 'competency' section name)
     const statsRows = data.filter((row) => row.section === 'attribute' || row.section === 'competency');
-    const competencyStats: CompetencyStats = {
-      problemSolving: 0,
-      stakeholderManagement: 0,
-      technicalExpertise: 0,
-      leadership: 0,
-      customerFocus: 0,
-      adaptability: 0,
-    };
+    const competencyStats: CompetencyStats = {};
+    const attributeConfig: AttributeConfig[] = [];
+
     statsRows.forEach((row) => {
-      const key = row.key as keyof CompetencyStats;
-      if (key in competencyStats) {
-        competencyStats[key] = parseInt(row.value, 10) || 0;
+      const key = row.key;
+      if (key) {
+        const value = parseInt(row.value, 10) || 0;
+        // Use 'name' column for custom label, fall back to default or auto-generated
+        const label = row.name || keyToLabel(key);
+
+        competencyStats[key] = value;
+        attributeConfig.push({ key, label, value });
       }
     });
 
@@ -104,6 +132,7 @@ export function parseProfileCSV(csvContent: string): SuccessProfile | null {
     return {
       role,
       competencyStats,
+      attributeConfig,
       requiredExperiences,
       academicBackground,
       toolbox,

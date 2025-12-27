@@ -320,6 +320,7 @@ export function resumeToCandidate(
     role: { title: string; level: string; class: string };
     requiredExperiences: Array<{ category: string; name: string; description: string; minYears: number; badgeIcon: string }>;
     toolbox: Array<{ category: string; tools: Array<{ name: string; proficiency: number; isRequired: boolean }> }>;
+    attributeConfig?: Array<{ key: string; label: string; value: number }>;
   }
 ): CandidateProfile {
   // Estimate competency stats based on resume content
@@ -340,6 +341,13 @@ export function resumeToCandidate(
     })),
   }));
 
+  // Build attributeConfig from competencyStats
+  const attributeConfig = Object.entries(competencyStats).map(([key, value]) => ({
+    key,
+    label: successProfile.attributeConfig?.find(a => a.key === key)?.label || key,
+    value,
+  }));
+
   return {
     personalInfo: {
       name: extractedData.name,
@@ -348,6 +356,7 @@ export function resumeToCandidate(
     },
     role: successProfile.role,
     competencyStats,
+    attributeConfig,
     requiredExperiences,
     academicBackground: {
       minDegree: extractedData.education[0]?.degree || '',

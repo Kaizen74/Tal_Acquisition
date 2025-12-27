@@ -20,6 +20,14 @@ export const candidateProfiles: CandidateProfile[] = [
       customerFocus: 92,
       adaptability: 88,
     },
+    attributeConfig: [
+      { key: 'problemSolving', label: 'Problem Solving', value: 88 },
+      { key: 'stakeholderManagement', label: 'Stakeholder Mgmt', value: 82 },
+      { key: 'technicalExpertise', label: 'Technical', value: 78 },
+      { key: 'leadership', label: 'Leadership', value: 75 },
+      { key: 'customerFocus', label: 'Customer Focus', value: 92 },
+      { key: 'adaptability', label: 'Adaptability', value: 88 },
+    ],
     requiredExperiences: [
       {
         category: 'Leadership',
@@ -139,6 +147,14 @@ export const candidateProfiles: CandidateProfile[] = [
       customerFocus: 85,
       adaptability: 80,
     },
+    attributeConfig: [
+      { key: 'problemSolving', label: 'Problem Solving', value: 90 },
+      { key: 'stakeholderManagement', label: 'Stakeholder Mgmt', value: 75 },
+      { key: 'technicalExpertise', label: 'Technical', value: 88 },
+      { key: 'leadership', label: 'Leadership', value: 70 },
+      { key: 'customerFocus', label: 'Customer Focus', value: 85 },
+      { key: 'adaptability', label: 'Adaptability', value: 80 },
+    ],
     requiredExperiences: [
       {
         category: 'Leadership',
@@ -257,6 +273,14 @@ export const candidateProfiles: CandidateProfile[] = [
       customerFocus: 98,
       adaptability: 90,
     },
+    attributeConfig: [
+      { key: 'problemSolving', label: 'Problem Solving', value: 82 },
+      { key: 'stakeholderManagement', label: 'Stakeholder Mgmt', value: 95 },
+      { key: 'technicalExpertise', label: 'Technical', value: 70 },
+      { key: 'leadership', label: 'Leadership', value: 88 },
+      { key: 'customerFocus', label: 'Customer Focus', value: 98 },
+      { key: 'adaptability', label: 'Adaptability', value: 90 },
+    ],
     requiredExperiences: [
       {
         category: 'Leadership',
