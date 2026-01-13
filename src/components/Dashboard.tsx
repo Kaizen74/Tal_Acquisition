@@ -338,8 +338,10 @@ export function Dashboard() {
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* Role Profile Header */}
         <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-          <div className="flex flex-col lg:flex-row items-start gap-6">
-            <div className="flex items-start gap-4">
+          {/* Top row: Avatar, Title/Info, and Match Score */}
+          <div className="flex flex-col lg:flex-row lg:items-start gap-6">
+            {/* Left: Avatar and main info */}
+            <div className="flex items-start gap-4 flex-1 min-w-0">
               <Avatar
                 name={profile.role.title}
                 roleClass={profile.role.class}
@@ -347,7 +349,7 @@ export function Dashboard() {
                 motivations={profile.motivations}
                 painPoints={profile.painPoints}
               />
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 {/* Seniority (formerly Level) */}
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-xs text-gray-500 uppercase tracking-wide">Seniority:</span>
@@ -380,23 +382,37 @@ export function Dashboard() {
                     ))}
                   </div>
                 )}
-
-                {/* Role Description */}
-                {profile.role.description && (
-                  <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <Info className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
-                      <p className="text-sm text-gray-600 leading-relaxed">
-                        {profile.role.description}
-                      </p>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
 
-            {/* Objective (formerly Class) - with multi-line support */}
-            <div className="flex-1 lg:max-w-md">
+            {/* Right: Match Score (when candidate selected) */}
+            {primarySelectedCandidate && (
+              <div className="flex flex-col items-end gap-3 flex-shrink-0">
+                <MatchScore score={primarySelectedCandidate.matchScore} size="md" />
+                <WeightConfig
+                  weights={matchWeights}
+                  onWeightsChange={handleWeightsChange}
+                  className="w-64"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Role Description - full width below header */}
+          {profile.role.description && (
+            <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <Info className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  {profile.role.description}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Objective - full width section */}
+          {profile.role.class && (
+            <div className="mt-4">
               <div className="bg-sats-purple/5 border border-sats-purple/20 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Target className="w-4 h-4 text-sats-purple" />
@@ -409,18 +425,7 @@ export function Dashboard() {
                 </p>
               </div>
             </div>
-
-            {primarySelectedCandidate && (
-              <div className="lg:ml-auto flex flex-col items-end gap-3">
-                <MatchScore score={primarySelectedCandidate.matchScore} size="md" />
-                <WeightConfig
-                  weights={matchWeights}
-                  onWeightsChange={handleWeightsChange}
-                  className="w-64"
-                />
-              </div>
-            )}
-          </div>
+          )}
 
           {/* Motivations and Pain Points */}
           <div className="mt-6 pt-6 border-t border-gray-100">

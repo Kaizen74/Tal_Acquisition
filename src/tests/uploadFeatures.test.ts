@@ -3,63 +3,8 @@
  * Verifies PDF profile upload and CSV candidates upload functionality
  */
 
-import { parseProfileCSV, validateProfileData } from '../utils/parseProfile';
+import { validateProfileData } from '../utils/parseProfile';
 import type { SuccessProfile, CandidateProfile, ToolCategory } from '../types';
-
-// Mock success profile for testing
-const mockSuccessProfile: SuccessProfile = {
-  role: {
-    title: 'Customer Support Lead',
-    level: 'Senior',
-    class: 'Lead and manage customer support operations',
-    description: 'Responsible for team leadership and customer satisfaction',
-  },
-  competencyStats: {
-    problemSolving: 85,
-    stakeholderManagement: 90,
-    technicalExpertise: 75,
-    leadership: 80,
-  },
-  attributeConfig: [
-    { key: 'problemSolving', label: 'Problem Solving', value: 85 },
-    { key: 'stakeholderManagement', label: 'Stakeholder Mgmt', value: 90 },
-    { key: 'technicalExpertise', label: 'Technical', value: 75 },
-    { key: 'leadership', label: 'Leadership', value: 80 },
-  ],
-  requiredExperiences: [
-    { category: 'Leadership', name: 'Team Management', description: 'Led cross-functional support team', minYears: 3, isRequired: true, achieved: false, badgeIcon: 'Users' },
-    { category: 'Technical', name: 'CRM Systems', description: 'Experience with CRM platforms', minYears: 2, isRequired: true, achieved: false, badgeIcon: 'Database' },
-  ],
-  academicBackground: {
-    minDegree: "Bachelor's",
-    preferredFields: ['Business', 'Communications'],
-    certifications: ['ITIL'],
-  },
-  toolbox: [
-    {
-      category: 'Communication',
-      tools: [
-        { name: 'Email Support', proficiency: 90, isRequired: true, achieved: true },
-        { name: 'Phone Support', proficiency: 85, isRequired: true, achieved: true },
-      ],
-    },
-    {
-      category: 'Analytics',
-      tools: [
-        { name: 'KPI Dashboard', proficiency: 80, isRequired: true, achieved: true },
-      ],
-    },
-  ],
-  motivations: ['Career growth', 'Team development'],
-  painPoints: ['Slow processes', 'Limited resources'],
-  weekInLife: ['Monday: Team meetings', 'Tuesday-Thursday: Operations', 'Friday: Planning'],
-};
-
-// Mock CSV data for candidate bulk upload
-const mockCandidatesCSV = `name,currentRole,yearsExperience,email,skills,education
-John Smith,Senior Support Manager,8,john@email.com,"Team Leadership, CRM, Process Improvement",Bachelor's in Business
-Sarah Johnson,Support Team Lead,5,sarah@email.com,"Team Management, Analytics, Customer Service",Master's in Communications
-Mike Chen,Technical Support Specialist,3,mike@email.com,"Technical Support, Problem Solving, SQL",Bachelor's in IT`;
 
 // Run tests
 console.log('╔══════════════════════════════════════════════════════════════╗');
