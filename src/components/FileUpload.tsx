@@ -1,9 +1,11 @@
 import { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, FileText, AlertCircle, CheckCircle, X, Download } from 'lucide-react';
+import { Upload, FileText, AlertCircle, CheckCircle, X, Download, Sparkles } from 'lucide-react';
 import { cn } from '../utils/cn';
 import type { SuccessProfile } from '../types';
 import { parseProfileCSV, validateProfileData } from '../utils/parseProfile';
+import { parseProfilePDFWithClaude } from '../utils/claudeProfileParser';
+import { ApiKeyConfig } from './ApiKeyConfig';
 
 interface FileUploadProps {
   onProfileLoaded: (profile: SuccessProfile) => void;
@@ -11,14 +13,61 @@ interface FileUploadProps {
 }
 
 type UploadStatus = 'idle' | 'parsing' | 'success' | 'error';
+type FileType = 'csv' | 'pdf';
 
 export function FileUpload({ onProfileLoaded, currentProfile }: FileUploadProps) {
   const [status, setStatus] = useState<UploadStatus>('idle');
   const [errors, setErrors] = useState<string[]>([]);
   const [fileName, setFileName] = useState<string>('');
+  const [claudeApiKey, setClaudeApiKey] = useState<string | null>(null);
+
+  const handleApiKeyChange = useCallback((apiKey: string | null) => {
+    setClaudeApiKey(apiKey);
+  }, []);
+
+  const processCSV = useCallback((content: string): SuccessProfile | null => {
+    const profile = parseProfileCSV(content);
+    if (!profile) {
+      setStatus('error');
+      setErrors(['Failed to parse CSV file. Please check the format.']);
+      return null;
+    }
+
+    const validationErrors = validateProfileData(profile);
+    if (validationErrors.length > 0) {
+      setStatus('error');
+      setErrors(validationErrors);
+      return null;
+    }
+
+    return profile;
+  }, []);
+
+  const processPDF = useCallback(async (file: File): Promise<SuccessProfile | null> => {
+    if (!claudeApiKey) {
+      setStatus('error');
+      setErrors(['Claude API key is required for PDF parsing. Please configure your API key above.']);
+      return null;
+    }
+
+    try {
+      const profile = await parseProfilePDFWithClaude(file, claudeApiKey);
+      const validationErrors = validateProfileData(profile);
+      if (validationErrors.length > 0) {
+        setStatus('error');
+        setErrors(validationErrors);
+        return null;
+      }
+      return profile;
+    } catch (error) {
+      setStatus('error');
+      setErrors([error instanceof Error ? error.message : 'Failed to parse PDF with AI']);
+      return null;
+    }
+  }, [claudeApiKey]);
 
   const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
+    async (acceptedFiles: File[]) => {
       const file = acceptedFiles[0];
       if (!file) return;
 
@@ -26,50 +75,50 @@ export function FileUpload({ onProfileLoaded, currentProfile }: FileUploadProps)
       setStatus('parsing');
       setErrors([]);
 
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const content = e.target?.result as string;
+      const fileType: FileType = file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'csv';
 
-        try {
-          const profile = parseProfileCSV(content);
+      try {
+        let profile: SuccessProfile | null = null;
 
-          if (!profile) {
+        if (fileType === 'csv') {
+          // Read CSV as text and process
+          const reader = new FileReader();
+          reader.onload = async (e) => {
+            const content = e.target?.result as string;
+            profile = processCSV(content);
+            if (profile) {
+              setStatus('success');
+              onProfileLoaded(profile);
+            }
+          };
+          reader.onerror = () => {
             setStatus('error');
-            setErrors(['Failed to parse CSV file. Please check the format.']);
-            return;
+            setErrors(['Failed to read file']);
+          };
+          reader.readAsText(file);
+        } else {
+          // Process PDF with Claude
+          profile = await processPDF(file);
+          if (profile) {
+            setStatus('success');
+            onProfileLoaded(profile);
           }
-
-          const validationErrors = validateProfileData(profile);
-          if (validationErrors.length > 0) {
-            setStatus('error');
-            setErrors(validationErrors);
-            return;
-          }
-
-          setStatus('success');
-          onProfileLoaded(profile);
-        } catch (error) {
-          setStatus('error');
-          setErrors([
-            error instanceof Error ? error.message : 'Unknown error occurred',
-          ]);
         }
-      };
-
-      reader.onerror = () => {
+      } catch (error) {
         setStatus('error');
-        setErrors(['Failed to read file']);
-      };
-
-      reader.readAsText(file);
+        setErrors([
+          error instanceof Error ? error.message : 'Unknown error occurred',
+        ]);
+      }
     },
-    [onProfileLoaded]
+    [onProfileLoaded, processCSV, processPDF]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
       'text/csv': ['.csv'],
+      'application/pdf': ['.pdf'],
     },
     maxFiles: 1,
   });
@@ -119,6 +168,21 @@ week,,"Friday: Week review, prioritization planning",,,,,,,,,,,,,`;
 
   return (
     <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">
+            Upload Success Profile
+          </h3>
+          <p className="text-sm text-gray-500">
+            Upload a CSV file or PDF document to define the role requirements
+          </p>
+        </div>
+      </div>
+
+      {/* Claude API Configuration for PDF parsing */}
+      <ApiKeyConfig onApiKeyChange={handleApiKeyChange} />
+
       {/* Download template button */}
       <button
         onClick={downloadTemplate}
@@ -137,27 +201,47 @@ week,,"Friday: Week review, prioritization planning",,,,,,,,,,,,,`;
             ? 'border-sats-blue bg-sats-blue/5'
             : 'border-gray-300 hover:border-gray-400',
           status === 'success' && 'border-sats-green bg-sats-green/5',
-          status === 'error' && 'border-sats-red bg-sats-red/5'
+          status === 'error' && 'border-sats-red bg-sats-red/5',
+          status === 'parsing' && 'pointer-events-none opacity-75'
         )}
       >
         <input {...getInputProps()} />
 
         {status === 'idle' && (
           <>
-            <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+            {claudeApiKey ? (
+              <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gradient-to-br from-sats-blue to-sats-purple flex items-center justify-center">
+                <Sparkles className="w-6 h-6 text-white" />
+              </div>
+            ) : (
+              <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+            )}
             <p className="text-gray-600 mb-2">
               {isDragActive
-                ? 'Drop the CSV file here...'
-                : 'Drag & drop a Success Profile CSV here'}
+                ? 'Drop the file here...'
+                : 'Drag & drop a Success Profile here'}
             </p>
-            <p className="text-sm text-gray-400">or click to select a file</p>
+            <p className="text-sm text-gray-400">CSV or PDF format (click to select)</p>
+            {claudeApiKey && (
+              <p className="text-xs text-sats-purple mt-2 flex items-center justify-center gap-1">
+                <Sparkles className="w-3 h-3" />
+                Claude AI enabled for PDF parsing
+              </p>
+            )}
+            {!claudeApiKey && (
+              <p className="text-xs text-amber-600 mt-2">
+                Configure API key above to enable PDF parsing
+              </p>
+            )}
           </>
         )}
 
         {status === 'parsing' && (
           <>
             <div className="w-12 h-12 mx-auto mb-4 border-4 border-sats-blue border-t-transparent rounded-full animate-spin" />
-            <p className="text-gray-600">Parsing {fileName}...</p>
+            <p className="text-gray-600">
+              {fileName.endsWith('.pdf') ? 'Parsing PDF with Claude AI...' : `Parsing ${fileName}...`}
+            </p>
           </>
         )}
 
@@ -221,6 +305,20 @@ week,,"Friday: Week review, prioritization planning",,,,,,,,,,,,,`;
           </p>
         </div>
       )}
+
+      {/* Help text */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h4 className="font-medium text-blue-900 mb-2">Supported formats:</h4>
+        <ul className="text-sm text-blue-700 space-y-1">
+          <li>• <strong>CSV:</strong> Structured format with predefined columns (download template for reference)</li>
+          <li>• <strong>PDF:</strong> Any job description or success profile document (requires Claude API key)</li>
+          {claudeApiKey && (
+            <li className="text-sats-purple font-medium">
+              • Claude AI will intelligently extract role requirements, attributes, and competencies from PDFs
+            </li>
+          )}
+        </ul>
+      </div>
     </div>
   );
 }

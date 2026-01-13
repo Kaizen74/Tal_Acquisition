@@ -10,10 +10,13 @@ import {
   User,
   Trash2,
   Sparkles,
+  Download,
+  Table,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { parseMultipleResumes } from '../utils/parseResume';
 import { parseMultipleResumesWithClaude } from '../utils/claudeResumeParser';
+import { parseCandidatesCSVWithClaude, downloadCandidatesCSVTemplate } from '../utils/claudeCandidatesCSVParser';
 import { ApiKeyConfig } from './ApiKeyConfig';
 import type { CandidateProfile, SuccessProfile } from '../types';
 
@@ -28,7 +31,10 @@ interface UploadedFile {
   status: 'pending' | 'parsing' | 'success' | 'error';
   error?: string;
   candidate?: CandidateProfile;
+  candidateCount?: number; // For CSV files with multiple candidates
 }
+
+type UploadMode = 'pdf' | 'csv';
 
 export function ResumeUpload({
   successProfile,
@@ -38,81 +44,152 @@ export function ResumeUpload({
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [claudeApiKey, setClaudeApiKey] = useState<string | null>(null);
+  const [uploadMode, setUploadMode] = useState<UploadMode>('pdf');
 
   const handleApiKeyChange = useCallback((apiKey: string | null) => {
     setClaudeApiKey(apiKey);
   }, []);
 
+  const processPDFFiles = useCallback(async (files: File[]) => {
+    const profileContext = {
+      role: successProfile.role,
+      requiredExperiences: successProfile.requiredExperiences,
+      toolbox: successProfile.toolbox,
+      attributeConfig: successProfile.attributeConfig,
+    };
+
+    const results = claudeApiKey
+      ? await parseMultipleResumesWithClaude(files, claudeApiKey, profileContext)
+      : await parseMultipleResumes(files, profileContext);
+
+    return results;
+  }, [successProfile, claudeApiKey]);
+
+  const processCSVFile = useCallback(async (file: File) => {
+    if (!claudeApiKey) {
+      return {
+        candidates: [],
+        errors: ['Claude API key is required for CSV candidate parsing. Please configure your API key.'],
+      };
+    }
+
+    const profileContext = {
+      role: successProfile.role,
+      requiredExperiences: successProfile.requiredExperiences,
+      toolbox: successProfile.toolbox,
+      attributeConfig: successProfile.attributeConfig,
+    };
+
+    return await parseCandidatesCSVWithClaude(file, claudeApiKey, profileContext);
+  }, [successProfile, claudeApiKey]);
+
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
-      // Add files to the list with pending status
-      const newFiles: UploadedFile[] = acceptedFiles.map((file) => ({
-        file,
-        status: 'pending' as const,
-      }));
+      // Determine if this is a CSV upload
+      const isCSVUpload = acceptedFiles.length === 1 && acceptedFiles[0].name.toLowerCase().endsWith('.csv');
 
-      setUploadedFiles((prev) => [...prev, ...newFiles]);
-      setIsProcessing(true);
+      if (isCSVUpload) {
+        // CSV upload - single file with multiple candidates
+        const file = acceptedFiles[0];
+        const newFile: UploadedFile = {
+          file,
+          status: 'pending',
+        };
 
-      // Process each file using Claude API if available, otherwise fallback to basic parsing
-      const profileContext = {
-        role: successProfile.role,
-        requiredExperiences: successProfile.requiredExperiences,
-        toolbox: successProfile.toolbox,
-      };
+        setUploadedFiles((prev) => [...prev, newFile]);
+        setIsProcessing(true);
 
-      const results = claudeApiKey
-        ? await parseMultipleResumesWithClaude(acceptedFiles, claudeApiKey, profileContext)
-        : await parseMultipleResumes(acceptedFiles, profileContext);
+        const results = await processCSVFile(file);
 
-      // Update file statuses and candidates
-      setUploadedFiles((prev) => {
-        const updated = [...prev];
-        let candidateIndex = 0;
-
-        for (let i = 0; i < updated.length; i++) {
-          const file = updated[i];
-          if (file.status === 'pending') {
-            const matchingError = results.errors.find((err) =>
-              err.includes(file.file.name)
-            );
-
-            if (matchingError) {
-              updated[i] = {
-                ...file,
+        // Update file status
+        setUploadedFiles((prev) => {
+          const updated = [...prev];
+          const fileIndex = updated.findIndex((f) => f.file === file);
+          if (fileIndex !== -1) {
+            if (results.errors.length > 0 && results.candidates.length === 0) {
+              updated[fileIndex] = {
+                ...updated[fileIndex],
                 status: 'error',
-                error: matchingError,
+                error: results.errors.join(', '),
               };
-            } else if (candidateIndex < results.candidates.length) {
-              updated[i] = {
-                ...file,
+            } else {
+              updated[fileIndex] = {
+                ...updated[fileIndex],
                 status: 'success',
-                candidate: results.candidates[candidateIndex],
+                candidateCount: results.candidates.length,
               };
-              candidateIndex++;
             }
           }
+          return updated;
+        });
+
+        // Add successful candidates
+        if (results.candidates.length > 0) {
+          onCandidatesLoaded([...existingCandidates, ...results.candidates]);
         }
 
-        return updated;
-      });
+        setIsProcessing(false);
+      } else {
+        // PDF upload - multiple individual resumes
+        const newFiles: UploadedFile[] = acceptedFiles.map((file) => ({
+          file,
+          status: 'pending' as const,
+        }));
 
-      // Add successful candidates to the list
-      if (results.candidates.length > 0) {
-        onCandidatesLoaded([...existingCandidates, ...results.candidates]);
+        setUploadedFiles((prev) => [...prev, ...newFiles]);
+        setIsProcessing(true);
+
+        const results = await processPDFFiles(acceptedFiles);
+
+        // Update file statuses and candidates
+        setUploadedFiles((prev) => {
+          const updated = [...prev];
+          let candidateIndex = 0;
+
+          for (let i = 0; i < updated.length; i++) {
+            const file = updated[i];
+            if (file.status === 'pending') {
+              const matchingError = results.errors.find((err) =>
+                err.includes(file.file.name)
+              );
+
+              if (matchingError) {
+                updated[i] = {
+                  ...file,
+                  status: 'error',
+                  error: matchingError,
+                };
+              } else if (candidateIndex < results.candidates.length) {
+                updated[i] = {
+                  ...file,
+                  status: 'success',
+                  candidate: results.candidates[candidateIndex],
+                };
+                candidateIndex++;
+              }
+            }
+          }
+
+          return updated;
+        });
+
+        // Add successful candidates to the list
+        if (results.candidates.length > 0) {
+          onCandidatesLoaded([...existingCandidates, ...results.candidates]);
+        }
+
+        setIsProcessing(false);
       }
-
-      setIsProcessing(false);
     },
-    [successProfile, onCandidatesLoaded, existingCandidates, claudeApiKey]
+    [successProfile, onCandidatesLoaded, existingCandidates, processPDFFiles, processCSVFile]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      'application/pdf': ['.pdf'],
-    },
-    multiple: true,
+    accept: uploadMode === 'csv'
+      ? { 'text/csv': ['.csv'] }
+      : { 'application/pdf': ['.pdf'] },
+    multiple: uploadMode === 'pdf',
   });
 
   const removeFile = (index: number) => {
@@ -141,6 +218,9 @@ export function ResumeUpload({
 
   const successCount = uploadedFiles.filter((f) => f.status === 'success').length;
   const errorCount = uploadedFiles.filter((f) => f.status === 'error').length;
+  const totalCandidatesFromCSV = uploadedFiles
+    .filter((f) => f.status === 'success' && f.candidateCount)
+    .reduce((sum, f) => sum + (f.candidateCount || 0), 0);
 
   return (
     <div className="space-y-4">
@@ -148,10 +228,10 @@ export function ResumeUpload({
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-gray-900">
-            Upload Candidate Resumes
+            Upload Candidate Data
           </h3>
           <p className="text-sm text-gray-500">
-            Upload PDF resumes to automatically extract candidate data
+            Upload PDF resumes or a CSV file with multiple candidates
           </p>
         </div>
         {uploadedFiles.length > 0 && (
@@ -167,6 +247,45 @@ export function ResumeUpload({
 
       {/* Claude API Configuration */}
       <ApiKeyConfig onApiKeyChange={handleApiKeyChange} />
+
+      {/* Upload Mode Toggle */}
+      <div className="flex items-center gap-2 p-1 bg-gray-100 rounded-lg w-fit">
+        <button
+          onClick={() => setUploadMode('pdf')}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors',
+            uploadMode === 'pdf'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+          )}
+        >
+          <FileText className="w-4 h-4" />
+          PDF Resumes
+        </button>
+        <button
+          onClick={() => setUploadMode('csv')}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors',
+            uploadMode === 'csv'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+          )}
+        >
+          <Table className="w-4 h-4" />
+          CSV Bulk Upload
+        </button>
+      </div>
+
+      {/* CSV Template Download */}
+      {uploadMode === 'csv' && (
+        <button
+          onClick={downloadCandidatesCSVTemplate}
+          className="flex items-center gap-2 px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          <Download className="w-4 h-4" />
+          Download Candidates CSV Template
+        </button>
+      )}
 
       {/* Dropzone */}
       <div
@@ -185,7 +304,7 @@ export function ResumeUpload({
           <>
             <Loader2 className="w-12 h-12 mx-auto mb-4 text-sats-purple animate-spin" />
             <p className="text-gray-600">
-              {claudeApiKey ? 'Processing resumes with Claude AI...' : 'Processing resumes...'}
+              {claudeApiKey ? 'Processing with Claude AI...' : 'Processing files...'}
             </p>
           </>
         ) : (
@@ -199,16 +318,25 @@ export function ResumeUpload({
             )}
             <p className="text-gray-600 mb-2">
               {isDragActive
-                ? 'Drop the PDF files here...'
-                : 'Drag & drop PDF resumes here'}
+                ? `Drop the ${uploadMode === 'csv' ? 'CSV file' : 'PDF files'} here...`
+                : uploadMode === 'csv'
+                  ? 'Drag & drop a CSV file with multiple candidates'
+                  : 'Drag & drop PDF resumes here'}
             </p>
             <p className="text-sm text-gray-400">
-              or click to select files (multiple files supported)
+              {uploadMode === 'csv'
+                ? 'Single CSV file with one candidate per row'
+                : 'or click to select files (multiple PDFs supported)'}
             </p>
             {claudeApiKey && (
               <p className="text-xs text-sats-purple mt-2 flex items-center justify-center gap-1">
                 <Sparkles className="w-3 h-3" />
                 Claude AI enhanced parsing enabled
+              </p>
+            )}
+            {!claudeApiKey && uploadMode === 'csv' && (
+              <p className="text-xs text-amber-600 mt-2">
+                Claude API key required for CSV parsing
               </p>
             )}
           </>
@@ -224,7 +352,9 @@ export function ResumeUpload({
           {successCount > 0 && (
             <span className="flex items-center gap-1 text-sats-green">
               <CheckCircle className="w-4 h-4" />
-              {successCount} parsed
+              {totalCandidatesFromCSV > 0
+                ? `${totalCandidatesFromCSV} candidates from CSV`
+                : `${successCount} parsed`}
             </span>
           )}
           {errorCount > 0 && (
@@ -283,6 +413,11 @@ export function ResumeUpload({
                     {uploadedFile.candidate.personalInfo.yearsExperience} years exp
                   </p>
                 )}
+                {uploadedFile.status === 'success' && uploadedFile.candidateCount && (
+                  <p className="text-sm text-sats-green">
+                    {uploadedFile.candidateCount} candidates extracted from CSV
+                  </p>
+                )}
                 {uploadedFile.status === 'error' && (
                   <p className="text-sm text-red-600">{uploadedFile.error}</p>
                 )}
@@ -317,12 +452,25 @@ export function ResumeUpload({
 
       {/* Help text */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h4 className="font-medium text-blue-900 mb-2">Tips for best results:</h4>
+        <h4 className="font-medium text-blue-900 mb-2">
+          {uploadMode === 'csv' ? 'CSV Upload Tips:' : 'PDF Upload Tips:'}
+        </h4>
         <ul className="text-sm text-blue-700 space-y-1">
-          <li>• Upload text-based PDFs (not scanned images)</li>
-          <li>• Standard resume formats work best</li>
-          <li>• Include skills, experience, and education sections</li>
-          <li>• Multiple files can be uploaded at once</li>
+          {uploadMode === 'csv' ? (
+            <>
+              <li>• Download the template to see the expected column format</li>
+              <li>• Include columns: name, currentRole, yearsExperience, skills, education</li>
+              <li>• One candidate per row</li>
+              <li>• Claude AI will extract and match attributes, experiences, and skills</li>
+            </>
+          ) : (
+            <>
+              <li>• Upload text-based PDFs (not scanned images)</li>
+              <li>• Standard resume formats work best</li>
+              <li>• Include skills, experience, and education sections</li>
+              <li>• Multiple files can be uploaded at once</li>
+            </>
+          )}
           {claudeApiKey && (
             <li className="text-sats-purple font-medium">
               • Claude AI will extract attributes, experiences, and skill proficiencies with higher accuracy
