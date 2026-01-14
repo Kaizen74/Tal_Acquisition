@@ -10,9 +10,10 @@ import type { CandidateProfile, CompetencyStats, ToolCategory, AttributeConfig }
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 
 // Optimized settings for large datasets
-const BATCH_SIZE = 15; // Larger batches for efficiency
+const BATCH_SIZE = 10; // Reduced for more reliable JSON responses
 const MAX_CONCURRENT_BATCHES = 4; // Parallel processing
 const USE_FAST_MODEL_THRESHOLD = 50; // Use faster model for large datasets
+const MAX_TOKENS = 8192; // Increased for complete responses
 
 interface SuccessProfileContext {
   role: { title: string; level: string; class: string };
@@ -166,7 +167,11 @@ export async function parseCandidatesCSVWithClaude(
 
     // Process batches in parallel with concurrency limit
     let processedCount = 0;
+    let successfulBatches = 0;
+    let failedBatches = 0;
     const batchResults: { candidates: CandidateProfile[]; errors: string[] }[] = [];
+
+    console.log(`Starting batch processing: ${batches.length} batches total`);
 
     for (let i = 0; i < batches.length; i += MAX_CONCURRENT_BATCHES) {
       const concurrentBatches = batches.slice(i, i + MAX_CONCURRENT_BATCHES);
@@ -176,6 +181,8 @@ export async function parseCandidatesCSVWithClaude(
         const batchNumber = batchStartIndex + batchOffset + 1;
         const startIndex = (batchStartIndex + batchOffset) * BATCH_SIZE;
 
+        console.log(`Processing batch ${batchNumber}/${batches.length} (${batch.length} candidates)`);
+
         try {
           const prompt = buildCompactPrompt(batch, keyColumns, successProfile, startIndex);
           const response = await callClaudeAPIOptimized(apiKey, prompt, modelId);
@@ -183,28 +190,45 @@ export async function parseCandidatesCSVWithClaude(
           const batchCandidates: CandidateProfile[] = [];
           const batchErrors: string[] = [];
 
+          console.log(`Batch ${batchNumber}: Claude returned ${response.c.length} candidates`);
+
           for (const candidateResponse of response.c) {
             try {
               const profile = buildCandidateProfileFromCompact(candidateResponse, successProfile);
               batchCandidates.push(profile);
             } catch (err) {
+              console.error(`Batch ${batchNumber} - candidate processing error:`, err);
               batchErrors.push(`Failed to process candidate: ${err instanceof Error ? err.message : 'Unknown'}`);
             }
           }
 
-          return { candidates: batchCandidates, errors: batchErrors };
+          console.log(`Batch ${batchNumber}: Successfully built ${batchCandidates.length} profiles`);
+          return { candidates: batchCandidates, errors: batchErrors, success: true };
         } catch (batchError) {
           const errorMsg = batchError instanceof Error ? batchError.message : 'Unknown error';
-          console.error(`Batch ${batchNumber} error:`, batchError);
-          return { candidates: [], errors: [`Batch ${batchNumber}: ${errorMsg}`] };
+          console.error(`Batch ${batchNumber} FAILED:`, errorMsg);
+          return { candidates: [], errors: [`Batch ${batchNumber} (rows ${startIndex + 1}-${startIndex + batch.length}): ${errorMsg}`], success: false };
         }
       });
 
       const results = await Promise.all(promises);
-      batchResults.push(...results);
+
+      for (const result of results) {
+        batchResults.push(result);
+        if ((result as { success?: boolean }).success) {
+          successfulBatches++;
+        } else {
+          failedBatches++;
+        }
+      }
 
       processedCount += concurrentBatches.reduce((sum, batch) => sum + batch.length, 0);
       onProgress?.(processedCount, rows.length, `Processed ${processedCount}/${rows.length} candidates...`);
+
+      // Small delay between batch rounds to avoid rate limiting
+      if (i + MAX_CONCURRENT_BATCHES < batches.length) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
     }
 
     // Aggregate results
@@ -213,7 +237,10 @@ export async function parseCandidatesCSVWithClaude(
       errors.push(...result.errors);
     }
 
-    onProgress?.(rows.length, rows.length, 'Complete!');
+    console.log(`Batch processing complete: ${successfulBatches} successful, ${failedBatches} failed`);
+    console.log(`Total candidates extracted: ${candidates.length}`);
+
+    onProgress?.(rows.length, rows.length, `Complete! Extracted ${candidates.length} candidates`);
 
   } catch (error) {
     errors.push(`Failed to parse CSV: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -277,35 +304,65 @@ SCORING: 90-100=exceptional, 75-89=strong, 60-74=adequate, <60=gap. Match exp/sk
 async function callClaudeAPIOptimized(
   apiKey: string,
   prompt: string,
-  modelId: string
+  modelId: string,
+  retryCount = 0
 ): Promise<ClaudeMultipleCandidatesResponse> {
-  const response = await fetch(CLAUDE_API_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: modelId,
-      max_tokens: 4096,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
+  const MAX_RETRIES = 2;
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(`Claude API error: ${response.status} - ${errorData.error?.message || response.statusText}`);
+  try {
+    const response = await fetch(CLAUDE_API_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: modelId,
+        max_tokens: MAX_TOKENS,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMsg = `Claude API error: ${response.status} - ${errorData.error?.message || response.statusText}`;
+
+      // Retry on rate limits or server errors
+      if ((response.status === 429 || response.status >= 500) && retryCount < MAX_RETRIES) {
+        const delay = Math.pow(2, retryCount + 1) * 1000;
+        console.log(`Retrying after ${delay}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return callClaudeAPIOptimized(apiKey, prompt, modelId, retryCount + 1);
+      }
+
+      throw new Error(errorMsg);
+    }
+
+    const data = await response.json();
+    const content = data.content?.[0]?.text;
+
+    if (!content) {
+      throw new Error('No content in Claude API response');
+    }
+
+    console.log(`API Response length: ${content.length} chars`);
+
+    return parseClaudeResponse(content);
+  } catch (error) {
+    if (retryCount < MAX_RETRIES && error instanceof Error &&
+        (error.message.includes('network') || error.message.includes('fetch'))) {
+      const delay = Math.pow(2, retryCount + 1) * 1000;
+      console.log(`Network error, retrying after ${delay}ms`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return callClaudeAPIOptimized(apiKey, prompt, modelId, retryCount + 1);
+    }
+    throw error;
   }
+}
 
-  const data = await response.json();
-  const content = data.content?.[0]?.text;
-
-  if (!content) {
-    throw new Error('No content in Claude API response');
-  }
-
+function parseClaudeResponse(content: string): ClaudeMultipleCandidatesResponse {
   try {
     let cleanedContent = content.trim()
       .replace(/^```json\s*/i, '')
@@ -313,8 +370,29 @@ async function callClaudeAPIOptimized(
       .replace(/\s*```$/i, '')
       .trim();
 
+    // Extract JSON object
     const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
     if (jsonMatch) cleanedContent = jsonMatch[0];
+
+    // Try to fix truncated JSON by adding closing brackets if needed
+    let bracketCount = 0;
+    let squareBracketCount = 0;
+    for (const char of cleanedContent) {
+      if (char === '{') bracketCount++;
+      else if (char === '}') bracketCount--;
+      else if (char === '[') squareBracketCount++;
+      else if (char === ']') squareBracketCount--;
+    }
+
+    // Attempt to close unclosed brackets
+    while (squareBracketCount > 0) {
+      cleanedContent += ']';
+      squareBracketCount--;
+    }
+    while (bracketCount > 0) {
+      cleanedContent += '}';
+      bracketCount--;
+    }
 
     const parsed = JSON.parse(cleanedContent);
 
@@ -323,22 +401,29 @@ async function callClaudeAPIOptimized(
       if (parsed.candidates && Array.isArray(parsed.candidates)) {
         return {
           c: parsed.candidates.map((c: Record<string, unknown>) => ({
-            n: c.name || c.n,
-            r: c.currentRole || c.r,
-            y: c.yearsExperience || c.y || 0,
-            a: c.attributes || c.a || {},
-            e: (Array.isArray(c.experiences) ? c.experiences : Array.isArray(c.e) ? c.e : []).map((e: Record<string, unknown>) => ({ n: e.name || e.n, v: e.achieved ?? e.v ?? false })),
-            s: (Array.isArray(c.skillProficiencies) ? c.skillProficiencies : Array.isArray(c.s) ? c.s : []).map((s: Record<string, unknown>) => ({ n: s.toolName || s.n, v: s.achieved ?? s.v ?? false })),
-            m: c.summary || c.m || '',
+            n: String(c.name || c.n || 'Unknown'),
+            r: String(c.currentRole || c.r || 'Not specified'),
+            y: Number(c.yearsExperience || c.y) || 0,
+            a: (c.attributes || c.a || {}) as Record<string, number>,
+            e: (Array.isArray(c.experiences) ? c.experiences : Array.isArray(c.e) ? c.e : []).map((e: Record<string, unknown>) => ({ n: String(e.name || e.n), v: Boolean(e.achieved ?? e.v) })),
+            s: (Array.isArray(c.skillProficiencies) ? c.skillProficiencies : Array.isArray(c.s) ? c.s : []).map((s: Record<string, unknown>) => ({ n: String(s.toolName || s.n), v: Boolean(s.achieved ?? s.v) })),
+            m: String(c.summary || c.m || ''),
           })),
         };
       }
+
+      // Check if there's a single candidate without the 'c' wrapper
+      if (parsed.n && parsed.r) {
+        return { c: [parsed as ClaudeCandidateResponse] };
+      }
+
       throw new Error('Response missing candidates array');
     }
 
+    console.log(`Parsed ${parsed.c.length} candidates from response`);
     return parsed;
   } catch (parseError) {
-    console.error('Failed to parse Claude response:', content.substring(0, 500));
+    console.error('Failed to parse Claude response:', content.substring(0, 1000));
     throw new Error(`Failed to parse response: ${parseError instanceof Error ? parseError.message : 'Invalid JSON'}`);
   }
 }

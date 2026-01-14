@@ -660,35 +660,41 @@ export function Dashboard() {
                     {selectedCandidates.size} selected
                   </span>
                 )}
-                {/* View mode toggle */}
-                <div className="flex border border-gray-300 rounded-lg overflow-hidden">
-                  <button
-                    onClick={() => setViewMode('cards')}
-                    className={cn(
-                      'flex items-center gap-1 px-3 py-1.5 text-sm transition-colors',
-                      viewMode === 'cards'
-                        ? 'bg-sats-orange text-white'
-                        : 'bg-white text-gray-600 hover:bg-gray-50'
-                    )}
-                    title="Card view"
-                  >
-                    <LayoutGrid className="w-4 h-4" />
-                    <span className="hidden sm:inline">Cards</span>
-                  </button>
-                  <button
-                    onClick={() => setViewMode('table')}
-                    className={cn(
-                      'flex items-center gap-1 px-3 py-1.5 text-sm transition-colors',
-                      viewMode === 'table'
-                        ? 'bg-sats-orange text-white'
-                        : 'bg-white text-gray-600 hover:bg-gray-50'
-                    )}
-                    title="Table view (recommended for 100+ candidates)"
-                  >
-                    <Table className="w-4 h-4" />
-                    <span className="hidden sm:inline">Table</span>
-                  </button>
-                </div>
+                {/* View mode toggle - only show for less than 100 candidates */}
+                {candidates.length < TABLE_VIEW_THRESHOLD ? (
+                  <div className="flex border border-gray-300 rounded-lg overflow-hidden">
+                    <button
+                      onClick={() => setViewMode('cards')}
+                      className={cn(
+                        'flex items-center gap-1 px-3 py-1.5 text-sm transition-colors',
+                        viewMode === 'cards'
+                          ? 'bg-sats-orange text-white'
+                          : 'bg-white text-gray-600 hover:bg-gray-50'
+                      )}
+                      title="Card view"
+                    >
+                      <LayoutGrid className="w-4 h-4" />
+                      <span className="hidden sm:inline">Cards</span>
+                    </button>
+                    <button
+                      onClick={() => setViewMode('table')}
+                      className={cn(
+                        'flex items-center gap-1 px-3 py-1.5 text-sm transition-colors',
+                        viewMode === 'table'
+                          ? 'bg-sats-orange text-white'
+                          : 'bg-white text-gray-600 hover:bg-gray-50'
+                      )}
+                      title="Table view"
+                    >
+                      <Table className="w-4 h-4" />
+                      <span className="hidden sm:inline">Table</span>
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
+                    Table view only for 100+ candidates
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -707,8 +713,8 @@ export function Dashboard() {
             </div>
           )}
 
-          {/* Table View */}
-          {candidates.length > 0 && viewMode === 'table' && (
+          {/* Table View - forced for 100+ candidates */}
+          {candidates.length > 0 && (candidates.length >= TABLE_VIEW_THRESHOLD || viewMode === 'table') && (
             <CandidatesTable
               candidates={candidates}
               onSelectCandidate={handleTableSelectCandidate}
@@ -716,8 +722,8 @@ export function Dashboard() {
             />
           )}
 
-          {/* Card Grid View */}
-          {candidates.length > 0 && viewMode === 'cards' && (
+          {/* Card Grid View - only available for less than 100 candidates */}
+          {candidates.length > 0 && candidates.length < TABLE_VIEW_THRESHOLD && viewMode === 'cards' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {candidates.map((candidate, index) => (
                 <CandidateCard
