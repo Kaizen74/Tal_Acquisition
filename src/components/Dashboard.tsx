@@ -34,6 +34,7 @@ import { AttributeScoreEditor } from './AttributeScoreEditor';
 import { CulturalFitAssessment } from './CulturalFitAssessment';
 import { CulturalFitConfig } from './CulturalFitConfig';
 import { InterviewComments } from './InterviewComments';
+import { CandidateDetailModal } from './CandidateDetailModal';
 import { exampleProfile } from '../data/successProfile';
 import { candidateProfiles as initialCandidates } from '../data/candidateProfiles';
 import { calculateMatchScore, DEFAULT_WEIGHTS } from '../utils/calculateMatch';
@@ -101,6 +102,7 @@ export function Dashboard() {
   const [editingCommentsIndex, setEditingCommentsIndex] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [tableSelectedCandidate, setTableSelectedCandidate] = useState<CandidateProfile | null>(null);
+  const [viewingCandidateDetails, setViewingCandidateDetails] = useState<CandidateProfile | null>(null);
 
   // Threshold for automatic table view
   const TABLE_VIEW_THRESHOLD = 100;
@@ -262,6 +264,11 @@ export function Dashboard() {
     if (index !== -1) {
       setSelectedCandidates(new Set([index]));
     }
+  };
+
+  // Handle viewing full candidate details
+  const handleViewCandidateDetails = (candidate: CandidateProfile) => {
+    setViewingCandidateDetails(candidate);
   };
 
   // Reset to empty state for new project
@@ -768,6 +775,7 @@ export function Dashboard() {
             <CandidatesTable
               candidates={candidates}
               onSelectCandidate={handleTableSelectCandidate}
+              onViewDetails={handleViewCandidateDetails}
               selectedCandidateId={tableSelectedCandidate?.personalInfo.name}
             />
           )}
@@ -786,6 +794,7 @@ export function Dashboard() {
                   onEditScores={() => setEditingCandidateIndex(index)}
                   onAssessCulturalFit={() => setAssessingCulturalFitIndex(index)}
                   onEditComments={() => setEditingCommentsIndex(index)}
+                  onViewDetails={() => handleViewCandidateDetails(candidate)}
                 />
               ))}
             </div>
@@ -854,6 +863,14 @@ export function Dashboard() {
           candidate={candidates[editingCommentsIndex]}
           onSave={handleCommentsSave}
           onClose={() => setEditingCommentsIndex(null)}
+        />
+      )}
+
+      {/* Candidate Detail Modal */}
+      {viewingCandidateDetails && (
+        <CandidateDetailModal
+          candidate={viewingCandidateDetails}
+          onClose={() => setViewingCandidateDetails(null)}
         />
       )}
     </div>

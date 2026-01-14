@@ -21,6 +21,7 @@ import type { CandidateProfile } from '../types';
 interface CandidatesTableProps {
   candidates: CandidateProfile[];
   onSelectCandidate: (candidate: CandidateProfile) => void;
+  onViewDetails?: (candidate: CandidateProfile) => void;
   selectedCandidateId?: string;
 }
 
@@ -30,7 +31,7 @@ type FilterRange = 'all' | 'high' | 'medium' | 'low';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
-export function CandidatesTable({ candidates, onSelectCandidate, selectedCandidateId }: CandidatesTableProps) {
+export function CandidatesTable({ candidates, onSelectCandidate, onViewDetails, selectedCandidateId }: CandidatesTableProps) {
   const [sortField, setSortField] = useState<SortField>('matchScore');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [currentPage, setCurrentPage] = useState(1);
@@ -351,7 +352,14 @@ export function CandidatesTable({ candidates, onSelectCandidate, selectedCandida
                   </td>
                   <td className="px-4 py-3 text-center">
                     <button
-                      onClick={(e) => { e.stopPropagation(); onSelectCandidate(candidate); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onViewDetails) {
+                          onViewDetails(candidate);
+                        } else {
+                          onSelectCandidate(candidate);
+                        }
+                      }}
                       className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors"
                       title="View full profile"
                     >

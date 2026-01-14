@@ -5,7 +5,7 @@ import {
   Radar,
   ResponsiveContainer,
 } from 'recharts';
-import { Eye, EyeOff, Briefcase, Calendar, Edit2, Heart, MessageSquare } from 'lucide-react';
+import { Eye, EyeOff, Briefcase, Calendar, Edit2, Heart, MessageSquare, ExternalLink } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { Avatar } from './Avatar';
 import type { CandidateProfile, SuccessProfile } from '../types';
@@ -19,6 +19,7 @@ interface CandidateCardProps {
   onEditScores?: () => void;
   onAssessCulturalFit?: () => void;
   onEditComments?: () => void;
+  onViewDetails?: () => void;
 }
 
 // Helper to get abbreviated label for mini radar chart
@@ -54,6 +55,7 @@ export function CandidateCard({
   onEditScores,
   onAssessCulturalFit,
   onEditComments,
+  onViewDetails,
 }: CandidateCardProps) {
   // Use attributeConfig for dynamic labels, fall back to competencyStats keys
   const attributeKeys = successProfile.attributeConfig?.length > 0
@@ -299,6 +301,17 @@ export function CandidateCard({
             </div>
           </div>
         </div>
+      )}
+
+      {/* View Details Button */}
+      {onViewDetails && (
+        <button
+          onClick={onViewDetails}
+          className="mt-3 w-full py-2 px-4 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
+        >
+          <ExternalLink className="w-4 h-4" />
+          View Full Details
+        </button>
       )}
     </div>
   );
