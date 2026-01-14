@@ -41,6 +41,49 @@ import { exportResultsToPdf } from '../utils/exportPdf';
 import type { SuccessProfile, CandidateProfile, MatchWeights, CulturalFitAssessment as CulturalFitAssessmentType } from '../types';
 import { cn } from '../utils/cn';
 
+// localStorage key for persisting match weights
+const WEIGHTS_STORAGE_KEY = 'talentRpg_matchWeights';
+
+// Helper to load weights from localStorage
+function loadWeightsFromStorage(): MatchWeights {
+  try {
+    const stored = localStorage.getItem(WEIGHTS_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Validate the stored weights have all required properties
+      if (
+        typeof parsed.attributes === 'number' &&
+        typeof parsed.experiences === 'number' &&
+        typeof parsed.skillProficiency === 'number' &&
+        typeof parsed.culturalFit === 'number'
+      ) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load weights from localStorage:', e);
+  }
+  return DEFAULT_WEIGHTS;
+}
+
+// Helper to save weights to localStorage
+function saveWeightsToStorage(weights: MatchWeights): void {
+  try {
+    localStorage.setItem(WEIGHTS_STORAGE_KEY, JSON.stringify(weights));
+  } catch (e) {
+    console.warn('Failed to save weights to localStorage:', e);
+  }
+}
+
+// Helper to clear weights from localStorage
+function clearWeightsFromStorage(): void {
+  try {
+    localStorage.removeItem(WEIGHTS_STORAGE_KEY);
+  } catch (e) {
+    console.warn('Failed to clear weights from localStorage:', e);
+  }
+}
+
 export function Dashboard() {
   const [profile, setProfile] = useState<SuccessProfile>(exampleProfile);
   const [candidates, setCandidates] = useState<CandidateProfile[]>(initialCandidates);
@@ -50,7 +93,8 @@ export function Dashboard() {
   const [showUpload, setShowUpload] = useState(false);
   const [uploadTab, setUploadTab] = useState<'profile' | 'resumes'>('resumes');
   const [activeSection, setActiveSection] = useState<string | null>(null);
-  const [matchWeights, setMatchWeights] = useState<MatchWeights>(DEFAULT_WEIGHTS);
+  // Load weights from localStorage on initial render
+  const [matchWeights, setMatchWeights] = useState<MatchWeights>(() => loadWeightsFromStorage());
   const [editingCandidateIndex, setEditingCandidateIndex] = useState<number | null>(null);
   const [assessingCulturalFitIndex, setAssessingCulturalFitIndex] = useState<number | null>(null);
   const [showCulturalFitConfig, setShowCulturalFitConfig] = useState(false);
@@ -144,6 +188,8 @@ export function Dashboard() {
 
   const handleWeightsChange = (newWeights: MatchWeights) => {
     setMatchWeights(newWeights);
+    // Persist to localStorage
+    saveWeightsToStorage(newWeights);
   };
 
   // Handle updated candidate scores from AttributeScoreEditor
@@ -234,7 +280,9 @@ export function Dashboard() {
     setProfile(emptyProfile);
     setCandidates([]);
     setSelectedCandidates(new Set());
+    // Reset weights to defaults and clear localStorage
     setMatchWeights(DEFAULT_WEIGHTS);
+    clearWeightsFromStorage();
     setShowUpload(true);
     setUploadTab('profile');
   };

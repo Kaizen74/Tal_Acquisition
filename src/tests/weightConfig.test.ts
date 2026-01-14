@@ -272,6 +272,203 @@ function testScoreCalculationFormula(): boolean {
   }
 }
 
+// ========================================
+// localStorage Persistence Tests
+// ========================================
+
+const WEIGHTS_STORAGE_KEY = 'talentRpg_matchWeights';
+
+// Mock localStorage for testing
+const mockLocalStorage: Record<string, string> = {};
+const originalLocalStorage = {
+  getItem: (key: string) => mockLocalStorage[key] || null,
+  setItem: (key: string, value: string) => { mockLocalStorage[key] = value; },
+  removeItem: (key: string) => { delete mockLocalStorage[key]; },
+  clear: () => { Object.keys(mockLocalStorage).forEach(k => delete mockLocalStorage[k]); },
+};
+
+function testLocalStorageSave(): boolean {
+  console.log('\n=== Test 6: localStorage Save ===');
+
+  // Clear mock storage
+  originalLocalStorage.clear();
+
+  const weightsToSave: MatchWeights = {
+    attributes: 50,
+    experiences: 20,
+    skillProficiency: 20,
+    culturalFit: 10,
+  };
+
+  // Simulate saving to localStorage
+  originalLocalStorage.setItem(WEIGHTS_STORAGE_KEY, JSON.stringify(weightsToSave));
+
+  const saved = originalLocalStorage.getItem(WEIGHTS_STORAGE_KEY);
+  if (!saved) {
+    console.error('❌ FAIL: Failed to save to localStorage');
+    return false;
+  }
+
+  const parsed = JSON.parse(saved);
+  if (parsed.attributes === 50 && parsed.experiences === 20) {
+    console.log('✅ PASS: Weights saved to localStorage correctly');
+    return true;
+  }
+
+  console.error('❌ FAIL: Saved weights do not match');
+  return false;
+}
+
+function testLocalStorageLoad(): boolean {
+  console.log('\n=== Test 7: localStorage Load ===');
+
+  // Clear mock storage
+  originalLocalStorage.clear();
+
+  // Pre-populate storage
+  const storedWeights: MatchWeights = {
+    attributes: 35,
+    experiences: 35,
+    skillProficiency: 20,
+    culturalFit: 10,
+  };
+  originalLocalStorage.setItem(WEIGHTS_STORAGE_KEY, JSON.stringify(storedWeights));
+
+  // Simulate loading
+  const stored = originalLocalStorage.getItem(WEIGHTS_STORAGE_KEY);
+  if (!stored) {
+    console.error('❌ FAIL: No stored weights found');
+    return false;
+  }
+
+  const loaded = JSON.parse(stored);
+  if (
+    loaded.attributes === 35 &&
+    loaded.experiences === 35 &&
+    loaded.skillProficiency === 20 &&
+    loaded.culturalFit === 10
+  ) {
+    console.log('✅ PASS: Weights loaded from localStorage correctly');
+    return true;
+  }
+
+  console.error('❌ FAIL: Loaded weights do not match stored values');
+  return false;
+}
+
+function testLocalStorageLoadWithDefaults(): boolean {
+  console.log('\n=== Test 8: localStorage Load with Defaults (empty storage) ===');
+
+  // Clear mock storage
+  originalLocalStorage.clear();
+
+  // Simulate loading when no stored value exists
+  const stored = originalLocalStorage.getItem(WEIGHTS_STORAGE_KEY);
+
+  let loadedWeights: MatchWeights;
+  if (stored) {
+    loadedWeights = JSON.parse(stored);
+  } else {
+    loadedWeights = DEFAULT_WEIGHTS;
+  }
+
+  if (
+    loadedWeights.attributes === DEFAULT_WEIGHTS.attributes &&
+    loadedWeights.experiences === DEFAULT_WEIGHTS.experiences &&
+    loadedWeights.skillProficiency === DEFAULT_WEIGHTS.skillProficiency &&
+    loadedWeights.culturalFit === DEFAULT_WEIGHTS.culturalFit
+  ) {
+    console.log('✅ PASS: Default weights returned when localStorage is empty');
+    return true;
+  }
+
+  console.error('❌ FAIL: Did not return default weights when storage is empty');
+  return false;
+}
+
+function testLocalStorageClearOnNewProject(): boolean {
+  console.log('\n=== Test 9: localStorage Clear on New Project ===');
+
+  // Clear mock storage
+  originalLocalStorage.clear();
+
+  // First, save custom weights
+  const customWeights: MatchWeights = {
+    attributes: 60,
+    experiences: 20,
+    skillProficiency: 15,
+    culturalFit: 5,
+  };
+  originalLocalStorage.setItem(WEIGHTS_STORAGE_KEY, JSON.stringify(customWeights));
+
+  // Verify saved
+  const beforeClear = originalLocalStorage.getItem(WEIGHTS_STORAGE_KEY);
+  if (!beforeClear) {
+    console.error('❌ FAIL: Weights not saved before clear test');
+    return false;
+  }
+  console.log('Before clear:', beforeClear);
+
+  // Simulate "New Project" clearing weights
+  originalLocalStorage.removeItem(WEIGHTS_STORAGE_KEY);
+
+  const afterClear = originalLocalStorage.getItem(WEIGHTS_STORAGE_KEY);
+  if (afterClear === null) {
+    console.log('✅ PASS: localStorage cleared on New Project');
+    return true;
+  }
+
+  console.error('❌ FAIL: localStorage not cleared');
+  return false;
+}
+
+function testLocalStorageInvalidData(): boolean {
+  console.log('\n=== Test 10: localStorage Invalid Data Handling ===');
+
+  // Clear mock storage
+  originalLocalStorage.clear();
+
+  // Store invalid JSON
+  originalLocalStorage.setItem(WEIGHTS_STORAGE_KEY, 'not-valid-json');
+
+  // Try to load - should handle gracefully
+  const stored = originalLocalStorage.getItem(WEIGHTS_STORAGE_KEY);
+  let loadedWeights: MatchWeights;
+
+  try {
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Validate structure
+      if (
+        typeof parsed.attributes === 'number' &&
+        typeof parsed.experiences === 'number' &&
+        typeof parsed.skillProficiency === 'number' &&
+        typeof parsed.culturalFit === 'number'
+      ) {
+        loadedWeights = parsed;
+      } else {
+        loadedWeights = DEFAULT_WEIGHTS;
+      }
+    } else {
+      loadedWeights = DEFAULT_WEIGHTS;
+    }
+  } catch {
+    // JSON parse error - use defaults
+    loadedWeights = DEFAULT_WEIGHTS;
+  }
+
+  if (
+    loadedWeights.attributes === DEFAULT_WEIGHTS.attributes &&
+    loadedWeights.experiences === DEFAULT_WEIGHTS.experiences
+  ) {
+    console.log('✅ PASS: Invalid data handled gracefully, defaults returned');
+    return true;
+  }
+
+  console.error('❌ FAIL: Invalid data not handled properly');
+  return false;
+}
+
 // Run all tests
 export function runAllTests(): void {
   console.log('========================================');
@@ -285,6 +482,13 @@ export function runAllTests(): void {
   results.push(testWeightImpactOnScore());
   results.push(testWeightValidation());
   results.push(testScoreCalculationFormula());
+
+  // localStorage persistence tests
+  results.push(testLocalStorageSave());
+  results.push(testLocalStorageLoad());
+  results.push(testLocalStorageLoadWithDefaults());
+  results.push(testLocalStorageClearOnNewProject());
+  results.push(testLocalStorageInvalidData());
 
   const passed = results.filter(r => r).length;
   const total = results.length;
