@@ -412,17 +412,19 @@ export function Dashboard() {
               </div>
             </div>
 
-            {/* Right: Match Score (when candidate selected) */}
-            {primarySelectedCandidate && (
-              <div className="flex flex-col items-end gap-3 flex-shrink-0">
+            {/* Right: Match Score and Weight Config */}
+            <div className="flex flex-col items-end gap-3 flex-shrink-0">
+              {/* Show Match Score only when candidate is selected */}
+              {primarySelectedCandidate && (
                 <MatchScore score={primarySelectedCandidate.matchScore} size="md" />
-                <WeightConfig
-                  weights={matchWeights}
-                  onWeightsChange={handleWeightsChange}
-                  className="w-64"
-                />
-              </div>
-            )}
+              )}
+              {/* Weight Config is always visible for configuration */}
+              <WeightConfig
+                weights={matchWeights}
+                onWeightsChange={handleWeightsChange}
+                className="w-64"
+              />
+            </div>
           </div>
 
           {/* Role Description - full width below header */}
