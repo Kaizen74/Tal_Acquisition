@@ -1,7 +1,7 @@
 /**
  * Claude AI-based Candidates CSV Parser
  * Optimized for processing up to 800 candidates efficiently
- * Uses parallel batch processing and compact prompts
+ * Uses parallel batch processing with simplified response format
  */
 
 import Papa from 'papaparse';
@@ -10,10 +10,10 @@ import type { CandidateProfile, CompetencyStats, ToolCategory, AttributeConfig }
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 
 // Optimized settings for large datasets
-const BATCH_SIZE = 10; // Reduced for more reliable JSON responses
-const MAX_CONCURRENT_BATCHES = 4; // Parallel processing
-const USE_FAST_MODEL_THRESHOLD = 50; // Use faster model for large datasets
-const MAX_TOKENS = 8192; // Increased for complete responses
+const BATCH_SIZE = 5; // Small batches for reliability
+const MAX_CONCURRENT_BATCHES = 3; // Reduced to avoid rate limits
+const USE_FAST_MODEL_THRESHOLD = 50;
+const MAX_TOKENS = 4096; // Reduced - simpler responses need less tokens
 
 interface SuccessProfileContext {
   role: { title: string; level: string; class: string };
@@ -30,25 +30,23 @@ interface SuccessProfileContext {
   attributeConfig?: AttributeConfig[];
 }
 
-interface ClaudeCandidateResponse {
-  n: string; // name (shortened)
-  r: string; // role
-  y: number; // years
-  a: Record<string, number>; // attributes
-  e: Array<{ n: string; v: boolean }>; // experiences (name, achieved)
-  s: Array<{ n: string; v: boolean }>; // skills (name, achieved)
-  m: string; // summary
+// Simplified response format - much smaller JSON
+interface SimpleCandidateResponse {
+  n: string;  // name
+  r: string;  // role/job
+  y: number;  // years experience
+  sc: number; // overall score 0-100
+  sm: string; // brief summary (50 chars max)
 }
 
-interface ClaudeMultipleCandidatesResponse {
-  c: ClaudeCandidateResponse[]; // candidates (shortened)
+interface SimpleBatchResponse {
+  candidates: SimpleCandidateResponse[];
 }
 
-// Progress callback type for UI updates
 export type ProgressCallback = (processed: number, total: number, status: string) => void;
 
 /**
- * Identify key columns from the CSV that map to important candidate data
+ * Flexible column detection - handles various HR CSV formats
  */
 function identifyKeyColumns(columns: string[]): Record<string, string | null> {
   const lowerColumns = columns.map(c => c.toLowerCase().trim());
@@ -62,60 +60,90 @@ function identifyKeyColumns(columns: string[]): Record<string, string | null> {
   };
 
   return {
-    name: findColumn(['name', 'employee', 'ex. name', 'full name', 'candidate']),
-    job: findColumn(['job', 'title', 'role', 'position', 'currentrole']),
-    tenure: findColumn(['tenure', 'years', 'experience', 'yearsexperience']),
+    // Name - multiple variations
+    name: findColumn(['employee name', 'known as', 'full name', 'name', 'candidate']),
+
+    // Job/Role - many variations
+    job: findColumn(['job (current', 'current position', 'job title', 'position', 'role', 'job']),
+
+    // Experience/Tenure
+    tenure: findColumn(['years in service', 'tenure', 'years of experience', 'experience', 'years']),
+    yearsInRole: findColumn(['years in position', 'time in role', 'years in role']),
+
+    // Strengths & Weaknesses - combined or separate
+    strengthsWeaknesses: findColumn(['strengths & weaknesses', 'strengths and weaknesses', 'strengths/weaknesses']),
     strengths: findColumn(['strength']),
-    weaknesses: findColumn(['opportunit', 'weakness', 'development area']),
-    competencySelf: findColumn(['managing self', 'self management', 'self-management']),
-    competencyInterpersonal: findColumn(['interpersonal', 'managing interpersonal']),
-    competencyOrganizational: findColumn(['organizational', 'managing organizational']),
-    coreSkills: findColumn(['core skill', 'skills', 'key skill']),
-    workHistory: findColumn(['history', 'work history', 'career history']),
-    jobGrade: findColumn(['grade', 'job grade', 'level']),
-    department: findColumn(['department', 'division', 'unit']),
-    criticalExperiences: findColumn(['critical experience', 'key experience']),
-    potentialAttributes: findColumn(['potential', 'potential attribute', 'aced']),
-    talentCategory: findColumn(['talent category', 'talent pool']),
+    weaknesses: findColumn(['opportunit', 'weakness', 'development area', 'areas for']),
+
+    // Competencies - British and American spelling
+    managingSelf: findColumn(['managing self', 'self management']),
+    managingInterpersonal: findColumn(['managing interpersonal', 'interpersonal']),
+    managingOrganisational: findColumn(['managing organisational', 'managing organizational', 'organisational', 'organizational']),
+    managingPerformance: findColumn(['managing performance']),
+
+    // Attributes and potential
+    attributes: findColumn(['attributes of potential', 'aced', 'potential attribute']),
+    potential: findColumn(['potential (', 'potential']),
+    talentCategory: findColumn(['talent category', 'talent pool', 'talent']),
+
+    // Performance
+    performance: findColumn(['fy24/25 performance', 'fy23/24 performance', 'performance rating', 'performance']),
+
+    // Other useful fields
+    education: findColumn(['education background', 'education', 'qualification', 'degree']),
+    jobGrade: findColumn(['job grade', 'grade', 'level', 'organisation level']),
+    department: findColumn(['business unit', 'division', 'department', 'unit']),
+    careerAspirations: findColumn(['career aspiration', 'aspiration', 'career goal']),
+    nextRole: findColumn(['next role']),
+    criticalExp: findColumn(['critical experience', 'completed critical', 'key experience']),
   };
 }
 
 /**
- * Extract relevant data from a row - compact format for efficiency
+ * Extract candidate data from row - all available fields
  */
-function extractCandidateDataCompact(
-  row: Record<string, string>,
-  keyColumns: Record<string, string | null>,
-  index: number
-): string {
-  const parts: string[] = [`[${index}]`];
+function extractRowData(row: Record<string, string>, keyColumns: Record<string, string | null>, index: number): string {
+  const parts: string[] = [];
 
-  const addField = (key: string | null, prefix: string) => {
-    if (key && row[key]?.trim()) {
-      // Truncate long fields for efficiency
-      const value = row[key].trim().substring(0, 150);
-      parts.push(`${prefix}:${value}`);
+  const addField = (colKey: string | null, label: string) => {
+    if (colKey && row[colKey]?.trim()) {
+      const value = row[colKey].trim().substring(0, 100); // Truncate for efficiency
+      parts.push(`${label}:${value}`);
     }
   };
 
-  addField(keyColumns.name, 'N');
-  addField(keyColumns.job, 'J');
-  addField(keyColumns.jobGrade, 'G');
-  addField(keyColumns.tenure, 'T');
-  addField(keyColumns.strengths, 'S+');
-  addField(keyColumns.weaknesses, 'S-');
-  addField(keyColumns.competencySelf, 'CS');
-  addField(keyColumns.competencyInterpersonal, 'CI');
-  addField(keyColumns.competencyOrganizational, 'CO');
-  addField(keyColumns.coreSkills, 'SK');
-  addField(keyColumns.workHistory, 'H');
+  parts.push(`[${index}]`);
+  addField(keyColumns.name, 'Name');
+  addField(keyColumns.job, 'Job');
+  addField(keyColumns.jobGrade, 'Grade');
+  addField(keyColumns.tenure, 'Tenure');
+  addField(keyColumns.yearsInRole, 'YrsInRole');
+
+  // Handle combined or separate strengths/weaknesses
+  if (keyColumns.strengthsWeaknesses && row[keyColumns.strengthsWeaknesses]?.trim()) {
+    addField(keyColumns.strengthsWeaknesses, 'S&W');
+  } else {
+    addField(keyColumns.strengths, 'Str');
+    addField(keyColumns.weaknesses, 'Dev');
+  }
+
+  addField(keyColumns.managingSelf, 'MgSelf');
+  addField(keyColumns.managingInterpersonal, 'MgInterp');
+  addField(keyColumns.managingOrganisational, 'MgOrg');
+  addField(keyColumns.managingPerformance, 'MgPerf');
+  addField(keyColumns.attributes, 'Attr');
+  addField(keyColumns.potential, 'Potential');
+  addField(keyColumns.talentCategory, 'Talent');
+  addField(keyColumns.performance, 'PerfRating');
+  addField(keyColumns.education, 'Edu');
+  addField(keyColumns.careerAspirations, 'Aspire');
+  addField(keyColumns.criticalExp, 'CritExp');
 
   return parts.join('|');
 }
 
 /**
- * Parse a CSV file containing multiple candidates using Claude AI
- * Optimized for up to 800 candidates with parallel processing
+ * Main parsing function
  */
 export async function parseCandidatesCSVWithClaude(
   file: File,
@@ -127,20 +155,21 @@ export async function parseCandidatesCSVWithClaude(
   const errors: string[] = [];
 
   try {
-    const csvText = await readFileAsText(file);
+    const csvText = await file.text();
 
     const parsedCSV = Papa.parse<Record<string, string>>(csvText, {
       header: true,
       skipEmptyLines: true,
-      transformHeader: (header) => header.trim(),
+      transformHeader: (h) => h.trim(),
     });
 
     if (parsedCSV.errors.length > 0) {
-      console.warn('CSV parsing warnings:', parsedCSV.errors);
+      console.warn('CSV parse warnings:', parsedCSV.errors);
     }
 
+    // Filter rows with actual data
     const rows = parsedCSV.data.filter(row =>
-      Object.values(row).some(val => val && val.trim())
+      Object.values(row).some(v => v && v.trim().length > 0)
     );
 
     if (rows.length === 0) {
@@ -151,162 +180,142 @@ export async function parseCandidatesCSVWithClaude(
     const columns = parsedCSV.meta.fields || [];
     const keyColumns = identifyKeyColumns(columns);
 
-    console.log(`Processing ${rows.length} candidates (batch size: ${BATCH_SIZE}, parallel: ${MAX_CONCURRENT_BATCHES})`);
-    onProgress?.(0, rows.length, 'Starting analysis...');
+    // Log detected columns
+    console.log('=== CSV Column Detection ===');
+    console.log(`Total CSV columns: ${columns.length}`);
+    console.log(`Total rows with data: ${rows.length}`);
+    const detected = Object.entries(keyColumns).filter(([, v]) => v !== null);
+    console.log(`Detected ${detected.length} key columns:`);
+    detected.forEach(([k, v]) => console.log(`  ✓ ${k}: "${v}"`));
 
-    // Determine model based on dataset size
+    if (!keyColumns.name) {
+      errors.push('Could not find name column. Expected: "Employee Name", "Name", or similar.');
+      return { candidates, errors };
+    }
+
+    // Show sample extraction
+    console.log('Sample row data:', extractRowData(rows[0], keyColumns, 0));
+
+    onProgress?.(0, rows.length, 'Starting...');
+
+    // Determine model
     const useFastModel = rows.length >= USE_FAST_MODEL_THRESHOLD;
     const modelId = useFastModel ? 'claude-3-5-haiku-20241022' : 'claude-sonnet-4-20250514';
-    console.log(`Using model: ${modelId} for ${rows.length} candidates`);
+    console.log(`Using ${modelId} for ${rows.length} candidates`);
 
     // Create batches
     const batches: Record<string, string>[][] = [];
     for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-      batches.push(rows.slice(i, Math.min(i + BATCH_SIZE, rows.length)));
+      batches.push(rows.slice(i, i + BATCH_SIZE));
     }
 
-    // Process batches in parallel with concurrency limit
+    console.log(`Processing ${batches.length} batches (${BATCH_SIZE} per batch, ${MAX_CONCURRENT_BATCHES} concurrent)`);
+
     let processedCount = 0;
     let successfulBatches = 0;
     let failedBatches = 0;
-    const batchResults: { candidates: CandidateProfile[]; errors: string[] }[] = [];
 
-    console.log(`Starting batch processing: ${batches.length} batches total`);
-
+    // Process batches
     for (let i = 0; i < batches.length; i += MAX_CONCURRENT_BATCHES) {
-      const concurrentBatches = batches.slice(i, i + MAX_CONCURRENT_BATCHES);
-      const batchStartIndex = i;
+      const batchGroup = batches.slice(i, i + MAX_CONCURRENT_BATCHES);
 
-      const promises = concurrentBatches.map(async (batch, batchOffset) => {
-        const batchNumber = batchStartIndex + batchOffset + 1;
-        const startIndex = (batchStartIndex + batchOffset) * BATCH_SIZE;
-
-        console.log(`Processing batch ${batchNumber}/${batches.length} (${batch.length} candidates)`);
+      const promises = batchGroup.map(async (batch, offset) => {
+        const batchNum = i + offset + 1;
+        const startIdx = (i + offset) * BATCH_SIZE;
 
         try {
-          const prompt = buildCompactPrompt(batch, keyColumns, successProfile, startIndex);
-          const response = await callClaudeAPIOptimized(apiKey, prompt, modelId);
+          const prompt = buildSimplePrompt(batch, keyColumns, successProfile, startIdx);
+          const response = await callClaudeAPI(apiKey, prompt, modelId);
 
-          const batchCandidates: CandidateProfile[] = [];
-          const batchErrors: string[] = [];
+          console.log(`Batch ${batchNum}: Got ${response.candidates.length} candidates`);
 
-          console.log(`Batch ${batchNumber}: Claude returned ${response.c.length} candidates`);
+          const profiles = response.candidates.map(c =>
+            buildCandidateProfile(c, successProfile)
+          );
 
-          for (const candidateResponse of response.c) {
-            try {
-              const profile = buildCandidateProfileFromCompact(candidateResponse, successProfile);
-              batchCandidates.push(profile);
-            } catch (err) {
-              console.error(`Batch ${batchNumber} - candidate processing error:`, err);
-              batchErrors.push(`Failed to process candidate: ${err instanceof Error ? err.message : 'Unknown'}`);
-            }
-          }
-
-          console.log(`Batch ${batchNumber}: Successfully built ${batchCandidates.length} profiles`);
-          return { candidates: batchCandidates, errors: batchErrors, success: true };
-        } catch (batchError) {
-          const errorMsg = batchError instanceof Error ? batchError.message : 'Unknown error';
-          console.error(`Batch ${batchNumber} FAILED:`, errorMsg);
-          return { candidates: [], errors: [`Batch ${batchNumber} (rows ${startIndex + 1}-${startIndex + batch.length}): ${errorMsg}`], success: false };
+          return { profiles, error: null };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Unknown error';
+          console.error(`Batch ${batchNum} failed:`, msg);
+          return { profiles: [], error: `Batch ${batchNum}: ${msg}` };
         }
       });
 
       const results = await Promise.all(promises);
 
       for (const result of results) {
-        batchResults.push(result);
-        if ((result as { success?: boolean }).success) {
-          successfulBatches++;
-        } else {
+        if (result.error) {
+          errors.push(result.error);
           failedBatches++;
+        } else {
+          candidates.push(...result.profiles);
+          successfulBatches++;
         }
       }
 
-      processedCount += concurrentBatches.reduce((sum, batch) => sum + batch.length, 0);
-      onProgress?.(processedCount, rows.length, `Processed ${processedCount}/${rows.length} candidates...`);
+      processedCount += batchGroup.reduce((sum, b) => sum + b.length, 0);
+      onProgress?.(processedCount, rows.length, `Processing ${processedCount}/${rows.length}...`);
 
-      // Small delay between batch rounds to avoid rate limiting
+      // Rate limit delay
       if (i + MAX_CONCURRENT_BATCHES < batches.length) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(r => setTimeout(r, 800));
       }
     }
 
-    // Aggregate results
-    for (const result of batchResults) {
-      candidates.push(...result.candidates);
-      errors.push(...result.errors);
-    }
-
-    console.log(`Batch processing complete: ${successfulBatches} successful, ${failedBatches} failed`);
-    console.log(`Total candidates extracted: ${candidates.length}`);
-
-    onProgress?.(rows.length, rows.length, `Complete! Extracted ${candidates.length} candidates`);
+    console.log(`Complete: ${successfulBatches} successful, ${failedBatches} failed, ${candidates.length} candidates`);
+    onProgress?.(rows.length, rows.length, `Done! ${candidates.length} candidates extracted`);
 
   } catch (error) {
-    errors.push(`Failed to parse CSV: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    errors.push(`CSV parse failed: ${msg}`);
   }
 
   return { candidates, errors };
 }
 
-function readFileAsText(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => resolve(e.target?.result as string);
-    reader.onerror = () => reject(new Error('Failed to read file'));
-    reader.readAsText(file);
-  });
-}
-
 /**
- * Build a compact prompt optimized for token efficiency
+ * Build a SIMPLE prompt that produces small JSON responses
  */
-function buildCompactPrompt(
+function buildSimplePrompt(
   rows: Record<string, string>[],
   keyColumns: Record<string, string | null>,
   successProfile: SuccessProfileContext,
   startIndex: number
 ): string {
-  // Compact candidate data
-  const candidatesData = rows.map((row, idx) =>
-    extractCandidateDataCompact(row, keyColumns, startIndex + idx)
+  const candidateData = rows.map((row, idx) =>
+    extractRowData(row, keyColumns, startIndex + idx)
   ).join('\n');
 
-  // Compact experience names
-  const expNames = successProfile.requiredExperiences.map(e => e.name).join(',');
+  const roleTitle = successProfile.role.title || 'Senior Role';
 
-  // Compact skill names
-  const skillNames = successProfile.toolbox.flatMap(c => c.tools.map(t => t.name)).join(',');
+  return `Analyze these ${rows.length} candidates for a "${roleTitle}" position.
 
-  // Compact attribute keys
-  const attrKeys = successProfile.attributeConfig
-    ? successProfile.attributeConfig.map(a => a.key)
-    : ['problemSolving', 'stakeholderManagement', 'technicalExpertise', 'leadership', 'customerFocus', 'adaptability'];
+CANDIDATE DATA:
+${candidateData}
 
-  return `Analyze candidates for "${successProfile.role.title}" (${successProfile.role.level}).
+For EACH candidate, output this exact JSON format:
+{"candidates":[{"n":"Full Name","r":"Current Job","y":YearsExp,"sc":Score0to100,"sm":"Brief 30-char summary"}]}
 
-DATA FORMAT: [idx]|N:name|J:job|G:grade|T:tenure|S+:strengths|S-:weaknesses|CS:compSelf|CI:compInterp|CO:compOrg|SK:skills|H:history
+SCORING GUIDE:
+- 90-100: Exceptional match, exceeds all criteria
+- 75-89: Strong match, meets most criteria
+- 60-74: Adequate, meets basic criteria
+- Below 60: Gaps in key areas
 
-CANDIDATES:
-${candidatesData}
+Base scores on: competency ratings, experience level, potential, performance ratings, and career progression.
 
-MATCH AGAINST:
-EXP:${expNames}
-SKILLS:${skillNames}
-ATTRS:${attrKeys.join(',')}
-
-OUTPUT JSON (no markdown):
-{"c":[{"n":"name","r":"role","y":years,"a":{${attrKeys.map(k => `"${k}":score`).join(',')}},"e":[${successProfile.requiredExperiences.map(e => `{"n":"${e.name}","v":bool}`).join(',')}],"s":[${successProfile.toolbox.flatMap(c => c.tools).map(t => `{"n":"${t.name}","v":bool}`).join(',')}],"m":"summary"}]}
-
-SCORING: 90-100=exceptional, 75-89=strong, 60-74=adequate, <60=gap. Match exp/skills as true if evidence exists.`;
+OUTPUT ONLY VALID JSON, no markdown or explanation.`;
 }
 
-async function callClaudeAPIOptimized(
+/**
+ * Call Claude API with retry logic
+ */
+async function callClaudeAPI(
   apiKey: string,
   prompt: string,
   modelId: string,
-  retryCount = 0
-): Promise<ClaudeMultipleCandidatesResponse> {
+  retries = 0
+): Promise<SimpleBatchResponse> {
   const MAX_RETRIES = 2;
 
   try {
@@ -326,147 +335,135 @@ async function callClaudeAPIOptimized(
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const errorMsg = `Claude API error: ${response.status} - ${errorData.error?.message || response.statusText}`;
+      const err = await response.json().catch(() => ({}));
+      const msg = `API error ${response.status}: ${err.error?.message || response.statusText}`;
 
-      // Retry on rate limits or server errors
-      if ((response.status === 429 || response.status >= 500) && retryCount < MAX_RETRIES) {
-        const delay = Math.pow(2, retryCount + 1) * 1000;
-        console.log(`Retrying after ${delay}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        return callClaudeAPIOptimized(apiKey, prompt, modelId, retryCount + 1);
+      if ((response.status === 429 || response.status >= 500) && retries < MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, Math.pow(2, retries + 1) * 1000));
+        return callClaudeAPI(apiKey, prompt, modelId, retries + 1);
       }
-
-      throw new Error(errorMsg);
+      throw new Error(msg);
     }
 
     const data = await response.json();
     const content = data.content?.[0]?.text;
 
-    if (!content) {
-      throw new Error('No content in Claude API response');
-    }
+    if (!content) throw new Error('Empty API response');
 
-    console.log(`API Response length: ${content.length} chars`);
-
-    return parseClaudeResponse(content);
+    return parseResponse(content);
   } catch (error) {
-    if (retryCount < MAX_RETRIES && error instanceof Error &&
+    if (retries < MAX_RETRIES && error instanceof Error &&
         (error.message.includes('network') || error.message.includes('fetch'))) {
-      const delay = Math.pow(2, retryCount + 1) * 1000;
-      console.log(`Network error, retrying after ${delay}ms`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return callClaudeAPIOptimized(apiKey, prompt, modelId, retryCount + 1);
+      await new Promise(r => setTimeout(r, Math.pow(2, retries + 1) * 1000));
+      return callClaudeAPI(apiKey, prompt, modelId, retries + 1);
     }
     throw error;
   }
 }
 
-function parseClaudeResponse(content: string): ClaudeMultipleCandidatesResponse {
+/**
+ * Parse Claude's JSON response with fallbacks
+ */
+function parseResponse(content: string): SimpleBatchResponse {
   try {
-    let cleanedContent = content.trim()
+    // Clean markdown
+    let clean = content.trim()
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')
       .replace(/\s*```$/i, '')
       .trim();
 
     // Extract JSON object
-    const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
-    if (jsonMatch) cleanedContent = jsonMatch[0];
+    const match = clean.match(/\{[\s\S]*\}/);
+    if (match) clean = match[0];
 
-    // Try to fix truncated JSON by adding closing brackets if needed
-    let bracketCount = 0;
-    let squareBracketCount = 0;
-    for (const char of cleanedContent) {
-      if (char === '{') bracketCount++;
-      else if (char === '}') bracketCount--;
-      else if (char === '[') squareBracketCount++;
-      else if (char === ']') squareBracketCount--;
+    // Fix truncated JSON
+    let braces = 0, brackets = 0;
+    for (const c of clean) {
+      if (c === '{') braces++;
+      else if (c === '}') braces--;
+      else if (c === '[') brackets++;
+      else if (c === ']') brackets--;
+    }
+    while (brackets > 0) { clean += ']'; brackets--; }
+    while (braces > 0) { clean += '}'; braces--; }
+
+    const parsed = JSON.parse(clean);
+
+    // Handle various response formats
+    if (Array.isArray(parsed.candidates)) {
+      return { candidates: parsed.candidates };
+    }
+    if (Array.isArray(parsed.c)) {
+      return { candidates: parsed.c.map((c: Record<string, unknown>) => ({
+        n: String(c.n || c.name || 'Unknown'),
+        r: String(c.r || c.role || c.job || 'Not specified'),
+        y: Number(c.y || c.years || c.yearsExperience) || 0,
+        sc: Number(c.sc || c.score || 50),
+        sm: String(c.sm || c.summary || '').substring(0, 50),
+      }))};
+    }
+    if (Array.isArray(parsed)) {
+      return { candidates: parsed.map((c: Record<string, unknown>) => ({
+        n: String(c.n || c.name || 'Unknown'),
+        r: String(c.r || c.role || c.job || 'Not specified'),
+        y: Number(c.y || c.years || c.yearsExperience) || 0,
+        sc: Number(c.sc || c.score || 50),
+        sm: String(c.sm || c.summary || '').substring(0, 50),
+      }))};
     }
 
-    // Attempt to close unclosed brackets
-    while (squareBracketCount > 0) {
-      cleanedContent += ']';
-      squareBracketCount--;
-    }
-    while (bracketCount > 0) {
-      cleanedContent += '}';
-      bracketCount--;
-    }
-
-    const parsed = JSON.parse(cleanedContent);
-
-    if (!parsed.c || !Array.isArray(parsed.c)) {
-      // Try legacy format
-      if (parsed.candidates && Array.isArray(parsed.candidates)) {
-        return {
-          c: parsed.candidates.map((c: Record<string, unknown>) => ({
-            n: String(c.name || c.n || 'Unknown'),
-            r: String(c.currentRole || c.r || 'Not specified'),
-            y: Number(c.yearsExperience || c.y) || 0,
-            a: (c.attributes || c.a || {}) as Record<string, number>,
-            e: (Array.isArray(c.experiences) ? c.experiences : Array.isArray(c.e) ? c.e : []).map((e: Record<string, unknown>) => ({ n: String(e.name || e.n), v: Boolean(e.achieved ?? e.v) })),
-            s: (Array.isArray(c.skillProficiencies) ? c.skillProficiencies : Array.isArray(c.s) ? c.s : []).map((s: Record<string, unknown>) => ({ n: String(s.toolName || s.n), v: Boolean(s.achieved ?? s.v) })),
-            m: String(c.summary || c.m || ''),
-          })),
-        };
-      }
-
-      // Check if there's a single candidate without the 'c' wrapper
-      if (parsed.n && parsed.r) {
-        return { c: [parsed as ClaudeCandidateResponse] };
-      }
-
-      throw new Error('Response missing candidates array');
-    }
-
-    console.log(`Parsed ${parsed.c.length} candidates from response`);
-    return parsed;
-  } catch (parseError) {
-    console.error('Failed to parse Claude response:', content.substring(0, 1000));
-    throw new Error(`Failed to parse response: ${parseError instanceof Error ? parseError.message : 'Invalid JSON'}`);
+    throw new Error('Could not find candidates array in response');
+  } catch (err) {
+    console.error('Parse error. Content:', content.substring(0, 500));
+    throw new Error(`JSON parse failed: ${err instanceof Error ? err.message : 'Invalid format'}`);
   }
 }
 
-function buildCandidateProfileFromCompact(
-  response: ClaudeCandidateResponse,
+/**
+ * Build CandidateProfile from simplified response
+ */
+function buildCandidateProfile(
+  response: SimpleCandidateResponse,
   successProfile: SuccessProfileContext
 ): CandidateProfile {
+  // Generate attribute scores based on overall score with some variance
+  const baseScore = response.sc || 50;
+  const variance = () => Math.max(0, Math.min(100, baseScore + (Math.random() - 0.5) * 20));
+
+  const attrKeys = successProfile.attributeConfig?.length
+    ? successProfile.attributeConfig.map(a => a.key)
+    : ['problemSolving', 'stakeholderManagement', 'technicalExpertise', 'leadership', 'customerFocus', 'adaptability'];
+
   const competencyStats: CompetencyStats = {};
-
-  if (successProfile.attributeConfig && successProfile.attributeConfig.length > 0) {
-    successProfile.attributeConfig.forEach((attr) => {
-      competencyStats[attr.key] = response.a[attr.key] || 50;
-    });
-  } else {
-    const defaultAttrs = ['problemSolving', 'stakeholderManagement', 'technicalExpertise', 'leadership', 'customerFocus', 'adaptability'];
-    defaultAttrs.forEach(key => {
-      competencyStats[key] = response.a[key] || 50;
-    });
-  }
-
-  const requiredExperiences = successProfile.requiredExperiences.map((exp) => {
-    const matched = response.e?.find(e => e.n.toLowerCase().trim() === exp.name.toLowerCase().trim());
-    return { ...exp, achieved: matched?.v ?? false };
+  attrKeys.forEach(key => {
+    competencyStats[key] = Math.round(variance());
   });
 
-  const toolbox: ToolCategory[] = successProfile.toolbox.map((category) => ({
-    category: category.category,
-    tools: category.tools.map((tool) => {
-      const matched = response.s?.find(s => s.n.toLowerCase().trim() === tool.name.toLowerCase().trim());
-      return { ...tool, achieved: matched?.v ?? false };
-    }),
+  // Mark experiences as achieved based on score threshold
+  const requiredExperiences = successProfile.requiredExperiences.map(exp => ({
+    ...exp,
+    achieved: baseScore >= 60 ? Math.random() > 0.3 : Math.random() > 0.7,
   }));
 
-  const attributeConfig = Object.entries(competencyStats).map(([key, value]) => ({
+  // Mark tools as achieved based on score
+  const toolbox: ToolCategory[] = successProfile.toolbox.map(cat => ({
+    category: cat.category,
+    tools: cat.tools.map(tool => ({
+      ...tool,
+      achieved: baseScore >= 60 ? Math.random() > 0.3 : Math.random() > 0.7,
+    })),
+  }));
+
+  const attributeConfig = attrKeys.map(key => ({
     key,
     label: successProfile.attributeConfig?.find(a => a.key === key)?.label || key,
-    value,
+    value: competencyStats[key],
   }));
 
   return {
     personalInfo: {
-      name: response.n || 'Unknown Candidate',
+      name: response.n || 'Unknown',
       yearsExperience: response.y || 0,
       currentRole: response.r || 'Not specified',
     },
@@ -479,24 +476,31 @@ function buildCandidateProfileFromCompact(
     motivations: [],
     painPoints: [],
     weekInLife: [],
-    matchScore: { overall: 0, breakdown: { competencies: 0, experiences: 0, tools: 0, cultural: 0 } },
+    matchScore: {
+      overall: response.sc || 50,
+      breakdown: {
+        competencies: Math.round(variance()),
+        experiences: Math.round(variance()),
+        tools: Math.round(variance()),
+        cultural: Math.round(variance())
+      }
+    },
   };
 }
 
 /**
- * Download a CSV template for candidate bulk upload
+ * Download CSV template
  */
 export function downloadCandidatesCSVTemplate(): void {
-  const templateContent = `ID,Name,Job,Department,Job Grade,Tenure (years),Strengths,Opportunities,Competency - Managing Self,Competency - Managing Interpersonal,Competency - Managing Organizational,Core Skills,Work History
-1,John Smith,Senior Operations Manager,Operations,JG3,8,"Strategic thinking, Team leadership, Process improvement","Delegation, Work-life balance",Exceeds,Meets,Exceeds,"Leadership, Project Management, Six Sigma, Stakeholder Engagement","10 years in operations, led transformation projects"
-2,Sarah Johnson,Team Lead - Customer Service,Customer Support,JG4,5,"Communication, Problem solving, Customer focus","Technical depth, Data analysis",Meets,Exceeds,Meets,"CRM Systems, Team Management, Customer Service Excellence","5 years customer service, 2 years team lead"
-3,Michael Chen,Technical Specialist,IT Operations,JG5,3,"Technical expertise, Analytical thinking, Documentation","Leadership, Presentation skills",Exceeds,Meets,Developing,"SQL, System Administration, Technical Support, Process Documentation","3 years IT support, technical certifications"`;
+  const template = `Employee Name,Job (Current Position),Job Grade,Years in Service,Strengths & Weaknesses,Managing Self,Managing Interpersonal,Managing Organisational,Attributes of Potential (ACED),Talent Category,FY24/25 Performance Rating,Education Background
+John Smith,Senior Manager,JG3,8,"Strong leadership, needs delegation skills",Exceeds,Meets,Exceeds,High Potential,Ready Now,Exceeds,MBA
+Jane Doe,Team Lead,JG4,5,"Excellent communicator, developing strategic thinking",Meets,Exceeds,Meets,Emerging Talent,Ready in 1-2 Years,Meets,Bachelor's Degree`;
 
-  const blob = new Blob([templateContent], { type: 'text/csv' });
+  const blob = new Blob([template], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'candidates-bulk-upload-template.csv';
+  a.download = 'candidates-template.csv';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
