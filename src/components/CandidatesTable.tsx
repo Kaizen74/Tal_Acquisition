@@ -354,10 +354,11 @@ export function CandidatesTable({ candidates, onSelectCandidate, onViewDetails, 
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        // Always select the candidate for radar chart comparison
+                        onSelectCandidate(candidate);
+                        // Also open the detail modal if callback provided
                         if (onViewDetails) {
                           onViewDetails(candidate);
-                        } else {
-                          onSelectCandidate(candidate);
                         }
                       }}
                       className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors"

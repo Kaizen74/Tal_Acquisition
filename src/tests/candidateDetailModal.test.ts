@@ -3,7 +3,7 @@
  * Tests: CandidateDetailModal display and data rendering
  */
 
-import type { CandidateProfile, MatchScore } from '../types';
+import type { CandidateProfile } from '../types';
 
 // Mock candidate profile for testing
 const mockCandidate: CandidateProfile = {
@@ -233,8 +233,6 @@ function testCompetencyStatsDisplay(): boolean {
 
 function testOptionalFieldsDisplay(): boolean {
   console.log('\n=== Test 7: Optional Fields Display ===');
-
-  let allValid = true;
 
   // Cultural Fit Assessment
   if (mockCandidate.culturalFitAssessment) {
