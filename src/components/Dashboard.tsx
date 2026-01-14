@@ -17,6 +17,8 @@ import {
   Info,
   Settings,
   Download,
+  LayoutGrid,
+  Table,
 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { RadarChart } from './RadarChart';
@@ -24,6 +26,7 @@ import { ExperienceBadges } from './ExperienceBadges';
 import { SkillTree } from './SkillTree';
 import { MatchScore } from './MatchScore';
 import { CandidateCard } from './CandidateCard';
+import { CandidatesTable } from './CandidatesTable';
 import { FileUpload } from './FileUpload';
 import { ResumeUpload } from './ResumeUpload';
 import { WeightConfig } from './WeightConfig';
@@ -52,6 +55,20 @@ export function Dashboard() {
   const [assessingCulturalFitIndex, setAssessingCulturalFitIndex] = useState<number | null>(null);
   const [showCulturalFitConfig, setShowCulturalFitConfig] = useState(false);
   const [editingCommentsIndex, setEditingCommentsIndex] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [tableSelectedCandidate, setTableSelectedCandidate] = useState<CandidateProfile | null>(null);
+
+  // Threshold for automatic table view
+  const TABLE_VIEW_THRESHOLD = 100;
+
+  // Auto-switch to table view when candidates exceed threshold
+  useEffect(() => {
+    if (candidates.length >= TABLE_VIEW_THRESHOLD) {
+      setViewMode('table');
+    } else if (candidates.length > 0 && candidates.length < TABLE_VIEW_THRESHOLD) {
+      setViewMode('cards');
+    }
+  }, [candidates.length]);
 
   // Colors for candidates (matching RadarChart)
   const candidateColors = [
@@ -189,6 +206,16 @@ export function Dashboard() {
       };
       return updated;
     });
+  };
+
+  // Handle table candidate selection
+  const handleTableSelectCandidate = (candidate: CandidateProfile) => {
+    setTableSelectedCandidate(candidate);
+    // Also select in the main selection for radar chart etc.
+    const index = candidates.findIndex(c => c.personalInfo.name === candidate.personalInfo.name);
+    if (index !== -1) {
+      setSelectedCandidates(new Set([index]));
+    }
   };
 
   // Reset to empty state for new project
@@ -623,25 +650,90 @@ export function Dashboard() {
             <h3 className="text-lg font-semibold text-gray-900">
               Candidate Comparison
             </h3>
-            <span className="ml-auto text-sm text-gray-500">
-              {selectedCandidates.size} selected
+            <span className="text-sm text-gray-500">
+              {candidates.length} candidates
             </span>
+            {candidates.length > 0 && (
+              <div className="ml-auto flex items-center gap-2">
+                {selectedCandidates.size > 0 && (
+                  <span className="text-sm text-gray-500 mr-2">
+                    {selectedCandidates.size} selected
+                  </span>
+                )}
+                {/* View mode toggle */}
+                <div className="flex border border-gray-300 rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => setViewMode('cards')}
+                    className={cn(
+                      'flex items-center gap-1 px-3 py-1.5 text-sm transition-colors',
+                      viewMode === 'cards'
+                        ? 'bg-sats-orange text-white'
+                        : 'bg-white text-gray-600 hover:bg-gray-50'
+                    )}
+                    title="Card view"
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                    <span className="hidden sm:inline">Cards</span>
+                  </button>
+                  <button
+                    onClick={() => setViewMode('table')}
+                    className={cn(
+                      'flex items-center gap-1 px-3 py-1.5 text-sm transition-colors',
+                      viewMode === 'table'
+                        ? 'bg-sats-orange text-white'
+                        : 'bg-white text-gray-600 hover:bg-gray-50'
+                    )}
+                    title="Table view (recommended for 100+ candidates)"
+                  >
+                    <Table className="w-4 h-4" />
+                    <span className="hidden sm:inline">Table</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {candidates.map((candidate, index) => (
-              <CandidateCard
-                key={candidate.personalInfo.name}
-                candidate={candidate}
-                successProfile={profile}
-                isSelected={selectedCandidates.has(index)}
-                selectionColor={getCandidateColor(index)}
-                onToggleSelect={() => toggleCandidate(index)}
-                onEditScores={() => setEditingCandidateIndex(index)}
-                onAssessCulturalFit={() => setAssessingCulturalFitIndex(index)}
-                onEditComments={() => setEditingCommentsIndex(index)}
-              />
-            ))}
-          </div>
+
+          {/* Empty state */}
+          {candidates.length === 0 && (
+            <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+              <Users className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+              <p className="text-gray-500 mb-2">No candidates uploaded yet</p>
+              <button
+                onClick={() => { setShowUpload(true); setUploadTab('resumes'); }}
+                className="text-sats-blue hover:underline text-sm"
+              >
+                Upload resumes to get started
+              </button>
+            </div>
+          )}
+
+          {/* Table View */}
+          {candidates.length > 0 && viewMode === 'table' && (
+            <CandidatesTable
+              candidates={candidates}
+              onSelectCandidate={handleTableSelectCandidate}
+              selectedCandidateId={tableSelectedCandidate?.personalInfo.name}
+            />
+          )}
+
+          {/* Card Grid View */}
+          {candidates.length > 0 && viewMode === 'cards' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {candidates.map((candidate, index) => (
+                <CandidateCard
+                  key={candidate.personalInfo.name}
+                  candidate={candidate}
+                  successProfile={profile}
+                  isSelected={selectedCandidates.has(index)}
+                  selectionColor={getCandidateColor(index)}
+                  onToggleSelect={() => toggleCandidate(index)}
+                  onEditScores={() => setEditingCandidateIndex(index)}
+                  onAssessCulturalFit={() => setAssessingCulturalFitIndex(index)}
+                  onEditComments={() => setEditingCommentsIndex(index)}
+                />
+              ))}
+            </div>
+          )}
         </section>
 
         {/* Week in Life */}

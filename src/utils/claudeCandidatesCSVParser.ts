@@ -1,14 +1,18 @@
 /**
  * Claude AI-based Candidates CSV Parser
- * Uses Claude to extract candidate profiles from CSV data with multiple candidates
- * Supports flexible CSV formats including HR talent management exports
+ * Optimized for processing up to 800 candidates efficiently
+ * Uses parallel batch processing and compact prompts
  */
 
 import Papa from 'papaparse';
 import type { CandidateProfile, CompetencyStats, ToolCategory, AttributeConfig } from '../types';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
-const BATCH_SIZE = 5; // Process candidates in batches to avoid token limits
+
+// Optimized settings for large datasets
+const BATCH_SIZE = 15; // Larger batches for efficiency
+const MAX_CONCURRENT_BATCHES = 4; // Parallel processing
+const USE_FAST_MODEL_THRESHOLD = 50; // Use faster model for large datasets
 
 interface SuccessProfileContext {
   role: { title: string; level: string; class: string };
@@ -26,28 +30,21 @@ interface SuccessProfileContext {
 }
 
 interface ClaudeCandidateResponse {
-  name: string;
-  currentRole: string;
-  yearsExperience: number;
-  attributes: {
-    [key: string]: number;
-  };
-  experiences: Array<{
-    name: string;
-    achieved: boolean;
-    relevance: string;
-  }>;
-  skillProficiencies: Array<{
-    toolName: string;
-    achieved: boolean;
-    evidence: string;
-  }>;
-  summary: string;
+  n: string; // name (shortened)
+  r: string; // role
+  y: number; // years
+  a: Record<string, number>; // attributes
+  e: Array<{ n: string; v: boolean }>; // experiences (name, achieved)
+  s: Array<{ n: string; v: boolean }>; // skills (name, achieved)
+  m: string; // summary
 }
 
 interface ClaudeMultipleCandidatesResponse {
-  candidates: ClaudeCandidateResponse[];
+  c: ClaudeCandidateResponse[]; // candidates (shortened)
 }
+
+// Progress callback type for UI updates
+export type ProgressCallback = (processed: number, total: number, status: string) => void;
 
 /**
  * Identify key columns from the CSV that map to important candidate data
@@ -83,90 +80,54 @@ function identifyKeyColumns(columns: string[]): Record<string, string | null> {
 }
 
 /**
- * Extract relevant data from a row based on identified key columns
+ * Extract relevant data from a row - compact format for efficiency
  */
-function extractCandidateData(
+function extractCandidateDataCompact(
   row: Record<string, string>,
   keyColumns: Record<string, string | null>,
-  allColumns: string[]
+  index: number
 ): string {
-  const data: string[] = [];
+  const parts: string[] = [`[${index}]`];
 
-  // Add key fields with labels
-  if (keyColumns.name && row[keyColumns.name]) {
-    data.push(`Name: ${row[keyColumns.name]}`);
-  }
-  if (keyColumns.job && row[keyColumns.job]) {
-    data.push(`Current Job/Title: ${row[keyColumns.job]}`);
-  }
-  if (keyColumns.jobGrade && row[keyColumns.jobGrade]) {
-    data.push(`Job Grade/Level: ${row[keyColumns.jobGrade]}`);
-  }
-  if (keyColumns.tenure && row[keyColumns.tenure]) {
-    data.push(`Tenure/Experience: ${row[keyColumns.tenure]}`);
-  }
-  if (keyColumns.department && row[keyColumns.department]) {
-    data.push(`Department: ${row[keyColumns.department]}`);
-  }
-  if (keyColumns.strengths && row[keyColumns.strengths]) {
-    data.push(`Strengths: ${row[keyColumns.strengths]}`);
-  }
-  if (keyColumns.weaknesses && row[keyColumns.weaknesses]) {
-    data.push(`Development Areas/Weaknesses: ${row[keyColumns.weaknesses]}`);
-  }
-  if (keyColumns.competencySelf && row[keyColumns.competencySelf]) {
-    data.push(`Competency - Managing Self: ${row[keyColumns.competencySelf]}`);
-  }
-  if (keyColumns.competencyInterpersonal && row[keyColumns.competencyInterpersonal]) {
-    data.push(`Competency - Interpersonal: ${row[keyColumns.competencyInterpersonal]}`);
-  }
-  if (keyColumns.competencyOrganizational && row[keyColumns.competencyOrganizational]) {
-    data.push(`Competency - Organizational: ${row[keyColumns.competencyOrganizational]}`);
-  }
-  if (keyColumns.coreSkills && row[keyColumns.coreSkills]) {
-    data.push(`Core Skills: ${row[keyColumns.coreSkills]}`);
-  }
-  if (keyColumns.workHistory && row[keyColumns.workHistory]) {
-    data.push(`Work History: ${row[keyColumns.workHistory]}`);
-  }
-  if (keyColumns.criticalExperiences && row[keyColumns.criticalExperiences]) {
-    data.push(`Critical Experiences: ${row[keyColumns.criticalExperiences]}`);
-  }
-  if (keyColumns.potentialAttributes && row[keyColumns.potentialAttributes]) {
-    data.push(`Potential Attributes: ${row[keyColumns.potentialAttributes]}`);
-  }
-  if (keyColumns.talentCategory && row[keyColumns.talentCategory]) {
-    data.push(`Talent Category: ${row[keyColumns.talentCategory]}`);
-  }
-
-  // If we didn't find key columns, include all non-empty fields
-  if (data.length < 3) {
-    for (const col of allColumns) {
-      if (row[col] && row[col].trim() && !data.some(d => d.includes(row[col]))) {
-        data.push(`${col}: ${row[col]}`);
-      }
+  const addField = (key: string | null, prefix: string) => {
+    if (key && row[key]?.trim()) {
+      // Truncate long fields for efficiency
+      const value = row[key].trim().substring(0, 150);
+      parts.push(`${prefix}:${value}`);
     }
-  }
+  };
 
-  return data.join('\n');
+  addField(keyColumns.name, 'N');
+  addField(keyColumns.job, 'J');
+  addField(keyColumns.jobGrade, 'G');
+  addField(keyColumns.tenure, 'T');
+  addField(keyColumns.strengths, 'S+');
+  addField(keyColumns.weaknesses, 'S-');
+  addField(keyColumns.competencySelf, 'CS');
+  addField(keyColumns.competencyInterpersonal, 'CI');
+  addField(keyColumns.competencyOrganizational, 'CO');
+  addField(keyColumns.coreSkills, 'SK');
+  addField(keyColumns.workHistory, 'H');
+
+  return parts.join('|');
 }
 
 /**
  * Parse a CSV file containing multiple candidates using Claude AI
+ * Optimized for up to 800 candidates with parallel processing
  */
 export async function parseCandidatesCSVWithClaude(
   file: File,
   apiKey: string,
-  successProfile: SuccessProfileContext
+  successProfile: SuccessProfileContext,
+  onProgress?: ProgressCallback
 ): Promise<{ candidates: CandidateProfile[]; errors: string[] }> {
   const candidates: CandidateProfile[] = [];
   const errors: string[] = [];
 
   try {
-    // Read CSV content
     const csvText = await readFileAsText(file);
 
-    // Parse CSV to extract raw data
     const parsedCSV = Papa.parse<Record<string, string>>(csvText, {
       header: true,
       skipEmptyLines: true,
@@ -177,10 +138,9 @@ export async function parseCandidatesCSVWithClaude(
       console.warn('CSV parsing warnings:', parsedCSV.errors);
     }
 
-    const rows = parsedCSV.data.filter(row => {
-      // Filter out empty rows
-      return Object.values(row).some(val => val && val.trim());
-    });
+    const rows = parsedCSV.data.filter(row =>
+      Object.values(row).some(val => val && val.trim())
+    );
 
     if (rows.length === 0) {
       errors.push('No candidate data found in CSV');
@@ -190,39 +150,71 @@ export async function parseCandidatesCSVWithClaude(
     const columns = parsedCSV.meta.fields || [];
     const keyColumns = identifyKeyColumns(columns);
 
-    console.log('Identified key columns:', keyColumns);
-    console.log(`Processing ${rows.length} candidates in batches of ${BATCH_SIZE}`);
+    console.log(`Processing ${rows.length} candidates (batch size: ${BATCH_SIZE}, parallel: ${MAX_CONCURRENT_BATCHES})`);
+    onProgress?.(0, rows.length, 'Starting analysis...');
 
-    // Process candidates in batches
+    // Determine model based on dataset size
+    const useFastModel = rows.length >= USE_FAST_MODEL_THRESHOLD;
+    const modelId = useFastModel ? 'claude-3-5-haiku-20241022' : 'claude-sonnet-4-20250514';
+    console.log(`Using model: ${modelId} for ${rows.length} candidates`);
+
+    // Create batches
+    const batches: Record<string, string>[][] = [];
     for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-      const batch = rows.slice(i, Math.min(i + BATCH_SIZE, rows.length));
-      const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
-      const totalBatches = Math.ceil(rows.length / BATCH_SIZE);
-
-      console.log(`Processing batch ${batchNumber}/${totalBatches} (${batch.length} candidates)`);
-
-      try {
-        // Build prompt for this batch
-        const prompt = buildCandidatesPrompt(batch, columns, keyColumns, successProfile);
-
-        // Call Claude API
-        const response = await callClaudeAPI(apiKey, prompt);
-
-        // Convert each response to CandidateProfile
-        for (const candidateResponse of response.candidates) {
-          try {
-            const profile = buildCandidateProfile(candidateResponse, successProfile);
-            candidates.push(profile);
-          } catch (err) {
-            errors.push(`Failed to process candidate ${candidateResponse.name}: ${err instanceof Error ? err.message : 'Unknown error'}`);
-          }
-        }
-      } catch (batchError) {
-        const errorMsg = batchError instanceof Error ? batchError.message : 'Unknown error';
-        errors.push(`Batch ${batchNumber} failed: ${errorMsg}`);
-        console.error(`Batch ${batchNumber} error:`, batchError);
-      }
+      batches.push(rows.slice(i, Math.min(i + BATCH_SIZE, rows.length)));
     }
+
+    // Process batches in parallel with concurrency limit
+    let processedCount = 0;
+    const batchResults: { candidates: CandidateProfile[]; errors: string[] }[] = [];
+
+    for (let i = 0; i < batches.length; i += MAX_CONCURRENT_BATCHES) {
+      const concurrentBatches = batches.slice(i, i + MAX_CONCURRENT_BATCHES);
+      const batchStartIndex = i;
+
+      const promises = concurrentBatches.map(async (batch, batchOffset) => {
+        const batchNumber = batchStartIndex + batchOffset + 1;
+        const startIndex = (batchStartIndex + batchOffset) * BATCH_SIZE;
+
+        try {
+          const prompt = buildCompactPrompt(batch, keyColumns, successProfile, startIndex);
+          const response = await callClaudeAPIOptimized(apiKey, prompt, modelId);
+
+          const batchCandidates: CandidateProfile[] = [];
+          const batchErrors: string[] = [];
+
+          for (const candidateResponse of response.c) {
+            try {
+              const profile = buildCandidateProfileFromCompact(candidateResponse, successProfile);
+              batchCandidates.push(profile);
+            } catch (err) {
+              batchErrors.push(`Failed to process candidate: ${err instanceof Error ? err.message : 'Unknown'}`);
+            }
+          }
+
+          return { candidates: batchCandidates, errors: batchErrors };
+        } catch (batchError) {
+          const errorMsg = batchError instanceof Error ? batchError.message : 'Unknown error';
+          console.error(`Batch ${batchNumber} error:`, batchError);
+          return { candidates: [], errors: [`Batch ${batchNumber}: ${errorMsg}`] };
+        }
+      });
+
+      const results = await Promise.all(promises);
+      batchResults.push(...results);
+
+      processedCount += concurrentBatches.reduce((sum, batch) => sum + batch.length, 0);
+      onProgress?.(processedCount, rows.length, `Processed ${processedCount}/${rows.length} candidates...`);
+    }
+
+    // Aggregate results
+    for (const result of batchResults) {
+      candidates.push(...result.candidates);
+      errors.push(...result.errors);
+    }
+
+    onProgress?.(rows.length, rows.length, 'Complete!');
+
   } catch (error) {
     errors.push(`Failed to parse CSV: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
@@ -239,66 +231,53 @@ function readFileAsText(file: File): Promise<string> {
   });
 }
 
-function buildCandidatesPrompt(
+/**
+ * Build a compact prompt optimized for token efficiency
+ */
+function buildCompactPrompt(
   rows: Record<string, string>[],
-  columns: string[],
   keyColumns: Record<string, string | null>,
-  successProfile: SuccessProfileContext
+  successProfile: SuccessProfileContext,
+  startIndex: number
 ): string {
-  // Build candidate data with focus on key fields
-  const candidatesData = rows.map((row, index) => {
-    const candidateData = extractCandidateData(row, keyColumns, columns);
-    return `=== CANDIDATE ${index + 1} ===\n${candidateData}`;
-  }).join('\n\n');
+  // Compact candidate data
+  const candidatesData = rows.map((row, idx) =>
+    extractCandidateDataCompact(row, keyColumns, startIndex + idx)
+  ).join('\n');
 
-  // Build experiences list (simplified)
-  const experiencesList = successProfile.requiredExperiences
-    .map((exp) => `"${exp.name}"`)
-    .join(', ');
+  // Compact experience names
+  const expNames = successProfile.requiredExperiences.map(e => e.name).join(',');
 
-  // Build tools list (simplified)
-  const toolsList = successProfile.toolbox
-    .flatMap((cat) => cat.tools.map((t) => `"${t.name}"`))
-    .join(', ');
+  // Compact skill names
+  const skillNames = successProfile.toolbox.flatMap(c => c.tools.map(t => t.name)).join(',');
 
-  // Build attributes list
-  const attributeKeys = successProfile.attributeConfig
-    ? successProfile.attributeConfig.map((attr) => attr.key)
+  // Compact attribute keys
+  const attrKeys = successProfile.attributeConfig
+    ? successProfile.attributeConfig.map(a => a.key)
     : ['problemSolving', 'stakeholderManagement', 'technicalExpertise', 'leadership', 'customerFocus', 'adaptability'];
 
-  return `Analyze these candidates for the role: "${successProfile.role.title}" (${successProfile.role.level}).
+  return `Analyze candidates for "${successProfile.role.title}" (${successProfile.role.level}).
 
-## KEY EVALUATION CRITERIA:
-1. **Job Title/Role**: Assess if candidate's current job type and seniority aligns with the target role
-2. **Strengths & Weaknesses**: Evaluate probability of success based on their documented strengths and development areas
-3. **Competencies (Managing Self, Interpersonal, Organizational)**: Score eligibility and success potential
-4. **Core Skills & Work History**: Match against required experiences and skill proficiencies
+DATA FORMAT: [idx]|N:name|J:job|G:grade|T:tenure|S+:strengths|S-:weaknesses|CS:compSelf|CI:compInterp|CO:compOrg|SK:skills|H:history
 
-## CANDIDATE DATA:
+CANDIDATES:
 ${candidatesData}
 
-## REQUIRED EXPERIENCES TO MATCH:
-${experiencesList}
+MATCH AGAINST:
+EXP:${expNames}
+SKILLS:${skillNames}
+ATTRS:${attrKeys.join(',')}
 
-## REQUIRED SKILLS TO MATCH:
-${toolsList}
+OUTPUT JSON (no markdown):
+{"c":[{"n":"name","r":"role","y":years,"a":{${attrKeys.map(k => `"${k}":score`).join(',')}},"e":[${successProfile.requiredExperiences.map(e => `{"n":"${e.name}","v":bool}`).join(',')}],"s":[${successProfile.toolbox.flatMap(c => c.tools).map(t => `{"n":"${t.name}","v":bool}`).join(',')}],"m":"summary"}]}
 
-## ATTRIBUTES TO SCORE (0-100):
-${attributeKeys.join(', ')}
-
-Scoring Guide:
-- 90-100: Exceptional, clearly exceeds requirements
-- 75-89: Strong, meets requirements well
-- 60-74: Adequate, meets basic requirements
-- Below 60: Gap identified, may need development
-
-Return ONLY valid JSON (no markdown):
-{"candidates":[{"name":"<name>","currentRole":"<job title>","yearsExperience":<number>,"attributes":{${attributeKeys.map(k => `"${k}":<score>`).join(',')}},"experiences":[${successProfile.requiredExperiences.map(e => `{"name":"${e.name}","achieved":<true/false>,"relevance":"<brief evidence>"}`).join(',')}],"skillProficiencies":[${successProfile.toolbox.flatMap(c => c.tools).map(t => `{"toolName":"${t.name}","achieved":<true/false>,"evidence":"<brief evidence>"}`).join(',')}],"summary":"<1-2 sentence fit summary>"}]}`;
+SCORING: 90-100=exceptional, 75-89=strong, 60-74=adequate, <60=gap. Match exp/skills as true if evidence exists.`;
 }
 
-async function callClaudeAPI(
+async function callClaudeAPIOptimized(
   apiKey: string,
-  prompt: string
+  prompt: string,
+  modelId: string
 ): Promise<ClaudeMultipleCandidatesResponse> {
   const response = await fetch(CLAUDE_API_ENDPOINT, {
     method: 'POST',
@@ -309,22 +288,15 @@ async function callClaudeAPI(
       'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 8192,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
+      model: modelId,
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: prompt }],
     }),
   });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(
-      `Claude API error: ${response.status} - ${errorData.error?.message || response.statusText}`
-    );
+    throw new Error(`Claude API error: ${response.status} - ${errorData.error?.message || response.statusText}`);
   }
 
   const data = await response.json();
@@ -334,86 +306,73 @@ async function callClaudeAPI(
     throw new Error('No content in Claude API response');
   }
 
-  // Parse the JSON response with improved error handling
   try {
-    // Clean up the response
-    let cleanedContent = content.trim();
-
-    // Remove markdown code blocks if present
-    cleanedContent = cleanedContent
+    let cleanedContent = content.trim()
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')
       .replace(/\s*```$/i, '')
       .trim();
 
-    // Try to find JSON object in the response
     const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      cleanedContent = jsonMatch[0];
-    }
+    if (jsonMatch) cleanedContent = jsonMatch[0];
 
     const parsed = JSON.parse(cleanedContent);
 
-    // Validate the response structure
-    if (!parsed.candidates || !Array.isArray(parsed.candidates)) {
+    if (!parsed.c || !Array.isArray(parsed.c)) {
+      // Try legacy format
+      if (parsed.candidates && Array.isArray(parsed.candidates)) {
+        return {
+          c: parsed.candidates.map((c: Record<string, unknown>) => ({
+            n: c.name || c.n,
+            r: c.currentRole || c.r,
+            y: c.yearsExperience || c.y || 0,
+            a: c.attributes || c.a || {},
+            e: (Array.isArray(c.experiences) ? c.experiences : Array.isArray(c.e) ? c.e : []).map((e: Record<string, unknown>) => ({ n: e.name || e.n, v: e.achieved ?? e.v ?? false })),
+            s: (Array.isArray(c.skillProficiencies) ? c.skillProficiencies : Array.isArray(c.s) ? c.s : []).map((s: Record<string, unknown>) => ({ n: s.toolName || s.n, v: s.achieved ?? s.v ?? false })),
+            m: c.summary || c.m || '',
+          })),
+        };
+      }
       throw new Error('Response missing candidates array');
     }
 
     return parsed;
   } catch (parseError) {
-    console.error('Failed to parse Claude response:', content);
-    console.error('Parse error:', parseError);
-    throw new Error(`Failed to parse Claude API response as JSON: ${parseError instanceof Error ? parseError.message : 'Invalid JSON'}`);
+    console.error('Failed to parse Claude response:', content.substring(0, 500));
+    throw new Error(`Failed to parse response: ${parseError instanceof Error ? parseError.message : 'Invalid JSON'}`);
   }
 }
 
-function buildCandidateProfile(
-  claudeResponse: ClaudeCandidateResponse,
+function buildCandidateProfileFromCompact(
+  response: ClaudeCandidateResponse,
   successProfile: SuccessProfileContext
 ): CandidateProfile {
-  // Build competency stats
   const competencyStats: CompetencyStats = {};
 
   if (successProfile.attributeConfig && successProfile.attributeConfig.length > 0) {
     successProfile.attributeConfig.forEach((attr) => {
-      competencyStats[attr.key] = claudeResponse.attributes[attr.key] || 50;
+      competencyStats[attr.key] = response.a[attr.key] || 50;
     });
   } else {
-    competencyStats.problemSolving = claudeResponse.attributes.problemSolving || 50;
-    competencyStats.stakeholderManagement = claudeResponse.attributes.stakeholderManagement || 50;
-    competencyStats.technicalExpertise = claudeResponse.attributes.technicalExpertise || 50;
-    competencyStats.leadership = claudeResponse.attributes.leadership || 50;
-    competencyStats.customerFocus = claudeResponse.attributes.customerFocus || 50;
-    competencyStats.adaptability = claudeResponse.attributes.adaptability || 50;
+    const defaultAttrs = ['problemSolving', 'stakeholderManagement', 'technicalExpertise', 'leadership', 'customerFocus', 'adaptability'];
+    defaultAttrs.forEach(key => {
+      competencyStats[key] = response.a[key] || 50;
+    });
   }
 
-  // Map experiences
   const requiredExperiences = successProfile.requiredExperiences.map((exp) => {
-    const claudeExp = claudeResponse.experiences?.find(
-      (e) => e.name.toLowerCase().trim() === exp.name.toLowerCase().trim()
-    );
-    return {
-      ...exp,
-      achieved: claudeExp?.achieved ?? false,
-    };
+    const matched = response.e?.find(e => e.n.toLowerCase().trim() === exp.name.toLowerCase().trim());
+    return { ...exp, achieved: matched?.v ?? false };
   });
 
-  // Map toolbox
   const toolbox: ToolCategory[] = successProfile.toolbox.map((category) => ({
     category: category.category,
     tools: category.tools.map((tool) => {
-      const claudeTool = claudeResponse.skillProficiencies?.find(
-        (t) => t.toolName.toLowerCase().trim() === tool.name.toLowerCase().trim()
-      );
-      return {
-        ...tool,
-        proficiency: tool.proficiency,
-        achieved: claudeTool?.achieved ?? false,
-      };
+      const matched = response.s?.find(s => s.n.toLowerCase().trim() === tool.name.toLowerCase().trim());
+      return { ...tool, achieved: matched?.v ?? false };
     }),
   }));
 
-  // Build attributeConfig
   const attributeConfig = Object.entries(competencyStats).map(([key, value]) => ({
     key,
     label: successProfile.attributeConfig?.find(a => a.key === key)?.label || key,
@@ -422,33 +381,25 @@ function buildCandidateProfile(
 
   return {
     personalInfo: {
-      name: claudeResponse.name || 'Unknown Candidate',
-      yearsExperience: claudeResponse.yearsExperience || 0,
-      currentRole: claudeResponse.currentRole || 'Not specified',
+      name: response.n || 'Unknown Candidate',
+      yearsExperience: response.y || 0,
+      currentRole: response.r || 'Not specified',
     },
     role: successProfile.role,
     competencyStats,
     attributeConfig,
     requiredExperiences,
-    academicBackground: {
-      minDegree: '',
-      preferredFields: [],
-      certifications: [],
-    },
+    academicBackground: { minDegree: '', preferredFields: [], certifications: [] },
     toolbox,
     motivations: [],
     painPoints: [],
     weekInLife: [],
-    matchScore: {
-      overall: 0,
-      breakdown: { competencies: 0, experiences: 0, tools: 0, cultural: 0 },
-    },
+    matchScore: { overall: 0, breakdown: { competencies: 0, experiences: 0, tools: 0, cultural: 0 } },
   };
 }
 
 /**
  * Download a CSV template for candidate bulk upload
- * Updated to match common HR talent management export formats
  */
 export function downloadCandidatesCSVTemplate(): void {
   const templateContent = `ID,Name,Job,Department,Job Grade,Tenure (years),Strengths,Opportunities,Competency - Managing Self,Competency - Managing Interpersonal,Competency - Managing Organizational,Core Skills,Work History

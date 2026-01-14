@@ -45,6 +45,7 @@ export function ResumeUpload({
   const [isProcessing, setIsProcessing] = useState(false);
   const [claudeApiKey, setClaudeApiKey] = useState<string | null>(null);
   const [uploadMode, setUploadMode] = useState<UploadMode>('pdf');
+  const [processingProgress, setProcessingProgress] = useState<{ processed: number; total: number; status: string } | null>(null);
 
   const handleApiKeyChange = useCallback((apiKey: string | null) => {
     setClaudeApiKey(apiKey);
@@ -80,7 +81,14 @@ export function ResumeUpload({
       attributeConfig: successProfile.attributeConfig,
     };
 
-    return await parseCandidatesCSVWithClaude(file, claudeApiKey, profileContext);
+    // Progress callback for large datasets
+    const onProgress = (processed: number, total: number, status: string) => {
+      setProcessingProgress({ processed, total, status });
+    };
+
+    const result = await parseCandidatesCSVWithClaude(file, claudeApiKey, profileContext, onProgress);
+    setProcessingProgress(null);
+    return result;
   }, [successProfile, claudeApiKey]);
 
   const onDrop = useCallback(
@@ -306,6 +314,25 @@ export function ResumeUpload({
             <p className="text-gray-600">
               {claudeApiKey ? 'Processing with Claude AI...' : 'Processing files...'}
             </p>
+            {processingProgress && (
+              <div className="mt-4 w-full max-w-xs mx-auto">
+                <div className="flex justify-between text-sm text-gray-500 mb-1">
+                  <span>{processingProgress.status}</span>
+                  <span>{processingProgress.processed}/{processingProgress.total}</span>
+                </div>
+                <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-sats-purple to-sats-blue transition-all duration-300"
+                    style={{ width: `${(processingProgress.processed / processingProgress.total) * 100}%` }}
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-2 text-center">
+                  {processingProgress.total >= 50
+                    ? 'Using parallel processing with Haiku model for speed...'
+                    : 'Processing with Sonnet model...'}
+                </p>
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -459,8 +486,9 @@ export function ResumeUpload({
           {uploadMode === 'csv' ? (
             <>
               <li>• Download the template to see the expected column format</li>
-              <li>• Include columns: name, currentRole, yearsExperience, skills, education</li>
-              <li>• One candidate per row</li>
+              <li>• Supports any HR CSV format - columns are auto-detected</li>
+              <li>• Optimized for up to 800 candidates with parallel processing</li>
+              <li>• Large datasets (50+) use faster Haiku model for speed</li>
               <li>• Claude AI will extract and match attributes, experiences, and skills</li>
             </>
           ) : (
