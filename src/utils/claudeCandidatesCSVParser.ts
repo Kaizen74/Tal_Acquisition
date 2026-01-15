@@ -6,6 +6,7 @@
 
 import Papa from 'papaparse';
 import type { CandidateProfile, CompetencyStats, ToolCategory, AttributeConfig } from '../types';
+import { calculateMatchScore, DEFAULT_WEIGHTS } from './calculateMatch';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 
@@ -421,38 +422,61 @@ function parseResponse(content: string): SimpleBatchResponse {
 }
 
 /**
+ * Deterministic variance function based on index (no randomness)
+ * Creates consistent spread around base score for each attribute
+ */
+function deterministicVariance(baseScore: number, index: number, total: number): number {
+  // Create a wave pattern: -10, -5, 0, +5, +10 spread based on position
+  const position = (index / Math.max(1, total - 1)) * 2 - 1; // -1 to +1
+  const offset = position * 10; // -10 to +10 spread
+  return Math.max(0, Math.min(100, Math.round(baseScore + offset)));
+}
+
+/**
  * Build CandidateProfile from simplified response
+ * Uses deterministic scoring and calculateMatchScore() for consistency
  */
 function buildCandidateProfile(
   response: SimpleCandidateResponse,
   successProfile: SuccessProfileContext
 ): CandidateProfile {
-  // Generate attribute scores based on overall score with some variance
   const baseScore = response.sc || 50;
-  const variance = () => Math.max(0, Math.min(100, baseScore + (Math.random() - 0.5) * 20));
 
+  // Get attribute keys from success profile or use defaults
   const attrKeys = successProfile.attributeConfig?.length
     ? successProfile.attributeConfig.map(a => a.key)
     : ['problemSolving', 'stakeholderManagement', 'technicalExpertise', 'leadership', 'customerFocus', 'adaptability'];
 
+  // Generate DETERMINISTIC attribute scores based on overall score with predictable variance
   const competencyStats: CompetencyStats = {};
-  attrKeys.forEach(key => {
-    competencyStats[key] = Math.round(variance());
+  attrKeys.forEach((key, index) => {
+    competencyStats[key] = deterministicVariance(baseScore, index, attrKeys.length);
   });
 
-  // Mark experiences as achieved based on score threshold
-  const requiredExperiences = successProfile.requiredExperiences.map(exp => ({
-    ...exp,
-    achieved: baseScore >= 60 ? Math.random() > 0.3 : Math.random() > 0.7,
-  }));
+  // Mark experiences as achieved DETERMINISTICALLY based on score threshold and position
+  // Higher scored candidates achieve more experiences in order
+  const requiredExperiences = successProfile.requiredExperiences.map((exp, index) => {
+    // Calculate how many experiences should be achieved based on score
+    const achievementThreshold = 100 - (index / successProfile.requiredExperiences.length) * 60;
+    return {
+      ...exp,
+      achieved: baseScore >= achievementThreshold,
+    };
+  });
 
-  // Mark tools as achieved based on score
+  // Mark tools as achieved DETERMINISTICALLY based on score threshold and position
+  let toolIndex = 0;
+  const totalTools = successProfile.toolbox.reduce((sum, cat) => sum + cat.tools.length, 0);
   const toolbox: ToolCategory[] = successProfile.toolbox.map(cat => ({
     category: cat.category,
-    tools: cat.tools.map(tool => ({
-      ...tool,
-      achieved: baseScore >= 60 ? Math.random() > 0.3 : Math.random() > 0.7,
-    })),
+    tools: cat.tools.map(tool => {
+      const achievementThreshold = 100 - (toolIndex / Math.max(1, totalTools)) * 60;
+      toolIndex++;
+      return {
+        ...tool,
+        achieved: baseScore >= achievementThreshold,
+      };
+    }),
   }));
 
   const attributeConfig = attrKeys.map(key => ({
@@ -461,7 +485,8 @@ function buildCandidateProfile(
     value: competencyStats[key],
   }));
 
-  return {
+  // Build partial candidate for score calculation
+  const partialCandidate: CandidateProfile = {
     personalInfo: {
       name: response.n || 'Unknown',
       yearsExperience: response.y || 0,
@@ -473,18 +498,55 @@ function buildCandidateProfile(
     requiredExperiences,
     academicBackground: { minDegree: '', preferredFields: [], certifications: [] },
     toolbox,
-    motivations: [],
+    motivations: [], // Will be empty for CSV uploads
     painPoints: [],
     weekInLife: [],
-    matchScore: {
-      overall: response.sc || 50,
-      breakdown: {
-        competencies: Math.round(variance()),
-        experiences: Math.round(variance()),
-        tools: Math.round(variance()),
-        cultural: Math.round(variance())
-      }
+    // Initialize cultural fit based on AI's overall assessment
+    // This gives CSV candidates a reasonable cultural baseline
+    culturalFitAssessment: {
+      score: Math.round(baseScore * 0.8), // Derive from overall score (80% of base)
+      assessedAt: new Date().toISOString(),
+      assessedBy: 'AI Assessment',
+      notes: 'Auto-assessed based on overall candidate profile',
     },
+    matchScore: {
+      overall: 0, // Will be calculated below
+      breakdown: { competencies: 0, experiences: 0, tools: 0, cultural: 0 },
+    },
+  };
+
+  // Build minimal success profile for score calculation
+  const profileForCalc = {
+    role: successProfile.role,
+    competencyStats: {} as CompetencyStats,
+    requiredExperiences: successProfile.requiredExperiences,
+    toolbox: successProfile.toolbox,
+    motivations: [],
+    attributeConfig: successProfile.attributeConfig || [],
+    academicBackground: { minDegree: '', preferredFields: [], certifications: [] },
+    painPoints: [],
+    weekInLife: [],
+  };
+
+  // Use success profile's competency stats for comparison
+  if (successProfile.attributeConfig?.length) {
+    successProfile.attributeConfig.forEach(attr => {
+      profileForCalc.competencyStats[attr.key] = attr.value;
+    });
+  } else {
+    // Default success profile values (high targets)
+    attrKeys.forEach(key => {
+      profileForCalc.competencyStats[key] = 85;
+    });
+  }
+
+  // Calculate match score using the unified function
+  const calculatedScore = calculateMatchScore(profileForCalc, partialCandidate, DEFAULT_WEIGHTS);
+
+  // Return complete candidate with calculated scores
+  return {
+    ...partialCandidate,
+    matchScore: calculatedScore,
   };
 }
 
