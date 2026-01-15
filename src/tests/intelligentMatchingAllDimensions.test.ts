@@ -104,14 +104,13 @@ test('Competency Rating Parsing', () => {
 // Test 2: Attribute Extraction from CSV Competencies
 // ============================================================
 test('Attribute Extraction from CSV Competency Columns', () => {
-  // Simulate extractCompetencyScores logic
-  const keyColumns = {
-    managingSelf: 'Managing Self',
-    managingInterpersonal: 'Managing Interpersonal',
-    managingOrganisational: 'Managing Organisational',
-    managingPerformance: 'Managing Performance',
-    attributes: 'Attributes of Potential',
-  };
+  // Simulate extractCompetencyScores logic - showing expected column mappings
+  // These are used conceptually but not in direct computation for this test
+  console.log('  Column Mappings Expected:');
+  console.log('    managingSelf -> problemSolving, adaptability');
+  console.log('    managingInterpersonal -> stakeholderManagement');
+  console.log('    managingOrganisational -> technicalExpertise');
+  console.log('    managingPerformance -> customerFocus, leadership');
 
   const rowData: Record<string, string> = {
     'Managing Self': 'Exceeds',
@@ -301,24 +300,21 @@ test('Skill/Tool Matching from CSV Data', () => {
 // Test 5: Integration - All Dimensions for Sample Candidate
 // ============================================================
 test('Integration - Complete Candidate Profile from CSV', () => {
-  // Simulate a complete candidate row
-  const candidateRow = {
-    'Employee Name': 'Maria Garcia',
-    'Job (Current Position)': 'Regional VP Operations',
-    'Organisation Level': 'GMB-2',
-    'Years in Service': '12',
-    'Managing Self': 'Exceeds',
-    'Managing Interpersonal': 'Exceeds',
-    'Managing Organisational': 'Meets',
-    'Managing Performance': 'Exceeds',
-    'Talent Category': 'Ready Now',
-    'Potential': 'High Potential',
-    'FY24/25 Performance': 'Exceeds',
-    'Education Background': 'MBA Supply Chain',
-    'Strengths': 'Strong leadership, P&L accountability, operational excellence',
+  // Simulate a complete candidate row - used for logging candidate details
+  const candidateData = {
+    name: 'Maria Garcia',
+    role: 'Regional VP Operations',
+    level: 'GMB-2',
+    years: '12',
+    ratings: { self: 'Exceeds', interpersonal: 'Exceeds', org: 'Meets', perf: 'Exceeds' },
+    talent: 'Ready Now',
+    potential: 'High Potential',
+    education: 'MBA Supply Chain',
+    strengths: 'Strong leadership, P&L accountability, operational excellence',
   };
 
-  console.log('  Candidate: Maria Garcia (Regional VP Operations, GMB-2)\n');
+  console.log(`  Candidate: ${candidateData.name} (${candidateData.role}, ${candidateData.level})\n`);
+  console.log(`  Data Points: ${candidateData.years} years, ${candidateData.education}`);
 
   // Expected outcomes
   const expectations = {

@@ -1,12 +1,21 @@
 /**
  * Claude AI-based Candidates CSV Parser
  * Optimized for processing up to 800 candidates efficiently
- * Uses parallel batch processing with simplified response format
+ * Uses parallel batch processing with semantic matching
+ *
+ * KEY PRINCIPLE: Uses deep language analysis for "closeness of fit" detection
+ * Does NOT translate quantitative ratings - analyzes meaning and context instead
  */
 
 import Papa from 'papaparse';
-import type { CandidateProfile, CompetencyStats, ToolCategory, AttributeConfig } from '../types';
+import type { CandidateProfile, CompetencyStats, ToolCategory, AttributeConfig, SuccessProfile } from '../types';
 import { calculateMatchScore, DEFAULT_WEIGHTS } from './calculateMatch';
+import {
+  extractProfileDescriptors,
+  extractCandidateTextFromCSV,
+  performSemanticMatching,
+  type SemanticMatchResult,
+} from './semanticMatching';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 
@@ -17,7 +26,7 @@ const USE_FAST_MODEL_THRESHOLD = 50;
 const MAX_TOKENS = 4096; // Reduced - simpler responses need less tokens
 
 interface SuccessProfileContext {
-  role: { title: string; level: string; class: string };
+  role: { title: string; level: string; class: string; description?: string };
   requiredExperiences: Array<{
     category: string;
     name: string;
@@ -29,6 +38,10 @@ interface SuccessProfileContext {
   }>;
   toolbox: ToolCategory[];
   attributeConfig?: AttributeConfig[];
+  // Additional fields for semantic matching
+  motivations?: string[];
+  painPoints?: string[];
+  academicBackground?: { minDegree: string; preferredFields: string[]; certifications: string[] };
 }
 
 // Simplified response format - much smaller JSON
@@ -1211,6 +1224,263 @@ function buildCandidateProfile(
     ...partialCandidate,
     matchScore: calculatedScore,
   };
+}
+
+/**
+ * Build CandidateProfile from semantic matching results
+ * Uses deep language analysis for "closeness of fit" instead of quantitative ratings
+ */
+function buildCandidateProfileFromSemanticMatch(
+  response: SimpleCandidateResponse,
+  successProfile: SuccessProfileContext,
+  semanticResult: SemanticMatchResult
+): CandidateProfile {
+  // Get attribute keys from success profile or use defaults
+  const attrKeys = successProfile.attributeConfig?.length
+    ? successProfile.attributeConfig.map(a => a.key)
+    : ['problemSolving', 'stakeholderManagement', 'technicalExpertise', 'leadership', 'customerFocus', 'adaptability'];
+
+  // Build competency stats from semantic attribute matching
+  const competencyStats: CompetencyStats = {};
+  attrKeys.forEach((key, index) => {
+    const semanticScore = semanticResult.attributes.breakdown[key]?.score;
+    if (semanticScore !== undefined) {
+      competencyStats[key] = semanticScore;
+    } else {
+      // Fallback to overall attribute score with variance
+      competencyStats[key] = deterministicVariance(semanticResult.attributes.overall, index, attrKeys.length);
+    }
+  });
+
+  // Build experiences from semantic experience matching
+  const requiredExperiences = successProfile.requiredExperiences.map(exp => {
+    const semanticExp = semanticResult.experiences.breakdown.find(
+      e => e.name.toLowerCase() === exp.name.toLowerCase()
+    );
+    return {
+      ...exp,
+      achieved: semanticExp?.achieved ?? false,
+    };
+  });
+
+  // Build toolbox from semantic skill matching
+  const toolbox: ToolCategory[] = successProfile.toolbox.map(cat => ({
+    category: cat.category,
+    tools: cat.tools.map(tool => {
+      const semanticTool = semanticResult.skills.breakdown.find(
+        s => s.name.toLowerCase() === tool.name.toLowerCase()
+      );
+      return {
+        ...tool,
+        achieved: semanticTool?.achieved ?? false,
+      };
+    }),
+  }));
+
+  const attributeConfig = attrKeys.map(key => ({
+    key,
+    label: successProfile.attributeConfig?.find(a => a.key === key)?.label || key,
+    value: competencyStats[key],
+  }));
+
+  // Build partial candidate for score calculation
+  const partialCandidate: CandidateProfile = {
+    personalInfo: {
+      name: response.n || 'Unknown',
+      yearsExperience: response.y || 0,
+      currentRole: response.r || 'Not specified',
+    },
+    role: successProfile.role,
+    competencyStats,
+    attributeConfig,
+    requiredExperiences,
+    academicBackground: { minDegree: '', preferredFields: [], certifications: [] },
+    toolbox,
+    motivations: [],
+    painPoints: [],
+    weekInLife: [],
+    // Cultural fit from semantic cultural alignment
+    culturalFitAssessment: {
+      score: semanticResult.cultural.overall,
+      assessedAt: new Date().toISOString(),
+      assessedBy: 'Semantic Language Analysis',
+      notes: semanticResult.cultural.reasoning || 'Assessed through deep language analysis of candidate descriptors against success profile',
+    },
+    matchScore: {
+      overall: 0, // Will be calculated below
+      breakdown: { competencies: 0, experiences: 0, tools: 0, cultural: 0 },
+    },
+  };
+
+  // Build minimal success profile for score calculation
+  const profileForCalc = {
+    role: successProfile.role,
+    competencyStats: {} as CompetencyStats,
+    requiredExperiences: successProfile.requiredExperiences,
+    toolbox: successProfile.toolbox,
+    motivations: successProfile.motivations || [],
+    attributeConfig: successProfile.attributeConfig || [],
+    academicBackground: successProfile.academicBackground || { minDegree: '', preferredFields: [], certifications: [] },
+    painPoints: successProfile.painPoints || [],
+    weekInLife: [],
+  };
+
+  // Use success profile's competency stats for comparison
+  if (successProfile.attributeConfig?.length) {
+    successProfile.attributeConfig.forEach(attr => {
+      profileForCalc.competencyStats[attr.key] = attr.value;
+    });
+  } else {
+    attrKeys.forEach(key => {
+      profileForCalc.competencyStats[key] = 85;
+    });
+  }
+
+  // Calculate match score using the unified function
+  const calculatedScore = calculateMatchScore(profileForCalc, partialCandidate, DEFAULT_WEIGHTS);
+
+  return {
+    ...partialCandidate,
+    matchScore: calculatedScore,
+  };
+}
+
+/**
+ * Parse candidates CSV with semantic matching
+ * Uses deep language analysis to detect "closeness of fit" against success profile descriptors
+ *
+ * This is the enhanced version that uses Claude AI for semantic analysis
+ * instead of quantitative rating translation
+ */
+export async function parseCandidatesCSVWithSemanticMatching(
+  file: File,
+  apiKey: string,
+  successProfile: SuccessProfileContext,
+  onProgress?: ProgressCallback
+): Promise<{ candidates: CandidateProfile[]; errors: string[] }> {
+  const candidates: CandidateProfile[] = [];
+  const errors: string[] = [];
+
+  try {
+    const csvText = await file.text();
+
+    const parsedCSV = Papa.parse<Record<string, string>>(csvText, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (h) => h.trim(),
+    });
+
+    if (parsedCSV.errors.length > 0) {
+      console.warn('CSV parse warnings:', parsedCSV.errors);
+    }
+
+    // Filter rows with actual data
+    const rows = parsedCSV.data.filter(row =>
+      Object.values(row).some(v => v && v.trim().length > 0)
+    );
+
+    if (rows.length === 0) {
+      errors.push('No candidate data found in CSV');
+      return { candidates, errors };
+    }
+
+    const columns = parsedCSV.meta.fields || [];
+    const keyColumns = identifyKeyColumns(columns);
+
+    console.log('=== Semantic Matching CSV Processing ===');
+    console.log(`Total rows: ${rows.length}`);
+
+    if (!keyColumns.name) {
+      errors.push('Could not find name column. Expected: "Employee Name", "Name", or similar.');
+      return { candidates, errors };
+    }
+
+    onProgress?.(0, rows.length, 'Preparing semantic analysis...');
+
+    // Extract profile descriptors for semantic matching
+    const fullProfile: SuccessProfile = {
+      role: successProfile.role,
+      competencyStats: {},
+      attributeConfig: successProfile.attributeConfig || [],
+      requiredExperiences: successProfile.requiredExperiences,
+      academicBackground: successProfile.academicBackground || { minDegree: '', preferredFields: [], certifications: [] },
+      toolbox: successProfile.toolbox,
+      motivations: successProfile.motivations || [],
+      painPoints: successProfile.painPoints || [],
+      weekInLife: [],
+    };
+    const profileDescriptors = extractProfileDescriptors(fullProfile);
+
+    // Process in batches for efficiency
+    const SEMANTIC_BATCH_SIZE = 3; // Smaller batches for semantic matching (more API calls)
+    let processedCount = 0;
+
+    for (let i = 0; i < rows.length; i += SEMANTIC_BATCH_SIZE) {
+      const batch = rows.slice(i, i + SEMANTIC_BATCH_SIZE);
+
+      const batchPromises = batch.map(async (row, batchIdx) => {
+        const globalIdx = i + batchIdx;
+
+        try {
+          // Extract candidate text from CSV row
+          const candidateText = extractCandidateTextFromCSV(row, keyColumns);
+
+          // Perform semantic matching using Claude AI
+          const semanticResult = await performSemanticMatching(
+            apiKey,
+            candidateText,
+            profileDescriptors
+          );
+
+          // Build simplified response for profile building
+          const simpleResponse: SimpleCandidateResponse = {
+            n: candidateText.name,
+            r: candidateText.currentRole,
+            y: candidateText.experienceText.yearsExperience,
+            sc: semanticResult.attributes.overall, // Use semantic overall for base score
+            sm: '',
+          };
+
+          // Build candidate profile from semantic results
+          return buildCandidateProfileFromSemanticMatch(
+            simpleResponse,
+            successProfile,
+            semanticResult
+          );
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Unknown error';
+          console.error(`Semantic matching failed for row ${globalIdx}:`, msg);
+          errors.push(`Row ${globalIdx + 1}: ${msg}`);
+          return null;
+        }
+      });
+
+      const batchResults = await Promise.all(batchPromises);
+
+      for (const result of batchResults) {
+        if (result) {
+          candidates.push(result);
+        }
+      }
+
+      processedCount += batch.length;
+      onProgress?.(processedCount, rows.length, `Semantic analysis ${processedCount}/${rows.length}...`);
+
+      // Rate limit delay between batches
+      if (i + SEMANTIC_BATCH_SIZE < rows.length) {
+        await new Promise(r => setTimeout(r, 800));
+      }
+    }
+
+    console.log(`Semantic matching complete: ${candidates.length} candidates processed`);
+    onProgress?.(rows.length, rows.length, `Done! ${candidates.length} candidates analyzed`);
+
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    errors.push(`CSV semantic parsing failed: ${msg}`);
+  }
+
+  return { candidates, errors };
 }
 
 /**

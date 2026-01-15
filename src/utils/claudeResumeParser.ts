@@ -1,8 +1,15 @@
-import type { CandidateProfile, CompetencyStats, ToolCategory, AttributeConfig } from '../types';
+import type { CandidateProfile, CompetencyStats, ToolCategory, AttributeConfig, SuccessProfile } from '../types';
 import { extractTextFromPDF } from './parseResume';
+import { calculateMatchScore, DEFAULT_WEIGHTS } from './calculateMatch';
+import {
+  extractProfileDescriptors,
+  extractCandidateTextFromPDF,
+  performSemanticMatching,
+  type SemanticMatchResult,
+} from './semanticMatching';
 
 interface SuccessProfileContext {
-  role: { title: string; level: string; class: string };
+  role: { title: string; level: string; class: string; description?: string };
   requiredExperiences: Array<{
     category: string;
     name: string;
@@ -14,6 +21,10 @@ interface SuccessProfileContext {
   }>;
   toolbox: ToolCategory[];
   attributeConfig?: AttributeConfig[];
+  // Additional fields for semantic matching
+  motivations?: string[];
+  painPoints?: string[];
+  academicBackground?: { minDegree: string; preferredFields: string[]; certifications: string[] };
 }
 
 interface ClaudeResumeResponse {
@@ -358,6 +369,241 @@ export async function parseMultipleResumesWithClaude(
   for (const file of files) {
     try {
       const candidate = await parseResumeWithClaude(file, apiKey, successProfile);
+      candidates.push(candidate);
+    } catch (error) {
+      errors.push(
+        `Failed to parse ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  return { candidates, errors };
+}
+
+/**
+ * Parse resume with semantic matching
+ * Uses deep language analysis to detect "closeness of fit" against success profile descriptors
+ *
+ * This is the enhanced version that uses Claude AI for semantic analysis
+ * instead of simple keyword matching
+ */
+export async function parseResumeWithSemanticMatching(
+  file: File,
+  apiKey: string,
+  successProfile: SuccessProfileContext
+): Promise<CandidateProfile> {
+  // Extract text from PDF
+  const resumeText = await extractTextFromPDF(file);
+
+  // First, use Claude to extract basic info (name, role, years)
+  const basicInfoPrompt = `Extract from this resume:
+1. Full name
+2. Current/most recent job title
+3. Total years of professional experience
+
+Resume:
+${resumeText.substring(0, 3000)}
+
+Respond with ONLY valid JSON:
+{"name": "Full Name", "currentRole": "Job Title", "yearsExperience": number}`;
+
+  const basicInfoResponse = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-3-5-haiku-20241022',
+      max_tokens: 256,
+      messages: [{ role: 'user', content: basicInfoPrompt }],
+    }),
+  });
+
+  if (!basicInfoResponse.ok) {
+    throw new Error(`Failed to extract basic info: ${basicInfoResponse.status}`);
+  }
+
+  const basicInfoData = await basicInfoResponse.json();
+  const basicInfoContent = basicInfoData.content?.[0]?.text || '{}';
+  const cleanedBasicInfo = basicInfoContent
+    .replace(/```json\n?/g, '')
+    .replace(/```\n?/g, '')
+    .trim();
+  const basicInfo = JSON.parse(cleanedBasicInfo);
+
+  // Extract profile descriptors for semantic matching
+  const fullProfile: SuccessProfile = {
+    role: successProfile.role,
+    competencyStats: {},
+    attributeConfig: successProfile.attributeConfig || [],
+    requiredExperiences: successProfile.requiredExperiences,
+    academicBackground: successProfile.academicBackground || { minDegree: '', preferredFields: [], certifications: [] },
+    toolbox: successProfile.toolbox,
+    motivations: successProfile.motivations || [],
+    painPoints: successProfile.painPoints || [],
+    weekInLife: [],
+  };
+  const profileDescriptors = extractProfileDescriptors(fullProfile);
+
+  // Extract candidate text from resume
+  const candidateText = extractCandidateTextFromPDF(
+    resumeText,
+    basicInfo.name || file.name.replace('.pdf', ''),
+    basicInfo.currentRole || '',
+    basicInfo.yearsExperience || 0
+  );
+
+  // Perform semantic matching using Claude AI
+  const semanticResult = await performSemanticMatching(
+    apiKey,
+    candidateText,
+    profileDescriptors
+  );
+
+  // Build candidate profile from semantic results
+  return buildCandidateProfileFromSemanticResult(
+    basicInfo,
+    successProfile,
+    semanticResult
+  );
+}
+
+/**
+ * Build CandidateProfile from semantic matching results for PDF parsing
+ */
+function buildCandidateProfileFromSemanticResult(
+  basicInfo: { name: string; currentRole: string; yearsExperience: number },
+  successProfile: SuccessProfileContext,
+  semanticResult: SemanticMatchResult
+): CandidateProfile {
+  // Get attribute keys from success profile or use defaults
+  const attrKeys = successProfile.attributeConfig?.length
+    ? successProfile.attributeConfig.map(a => a.key)
+    : ['problemSolving', 'stakeholderManagement', 'technicalExpertise', 'leadership', 'customerFocus', 'adaptability'];
+
+  // Build competency stats from semantic attribute matching
+  const competencyStats: CompetencyStats = {};
+  attrKeys.forEach((key, index) => {
+    const semanticScore = semanticResult.attributes.breakdown[key]?.score;
+    if (semanticScore !== undefined) {
+      competencyStats[key] = semanticScore;
+    } else {
+      // Fallback to overall attribute score with variance
+      const position = (index / Math.max(1, attrKeys.length - 1)) * 2 - 1;
+      const offset = position * 10;
+      competencyStats[key] = Math.max(0, Math.min(100, Math.round(semanticResult.attributes.overall + offset)));
+    }
+  });
+
+  // Build experiences from semantic experience matching
+  const requiredExperiences = successProfile.requiredExperiences.map(exp => {
+    const semanticExp = semanticResult.experiences.breakdown.find(
+      e => e.name.toLowerCase() === exp.name.toLowerCase()
+    );
+    return {
+      ...exp,
+      achieved: semanticExp?.achieved ?? false,
+    };
+  });
+
+  // Build toolbox from semantic skill matching
+  const toolbox: ToolCategory[] = successProfile.toolbox.map(cat => ({
+    category: cat.category,
+    tools: cat.tools.map(tool => {
+      const semanticTool = semanticResult.skills.breakdown.find(
+        s => s.name.toLowerCase() === tool.name.toLowerCase()
+      );
+      return {
+        ...tool,
+        achieved: semanticTool?.achieved ?? false,
+      };
+    }),
+  }));
+
+  const attributeConfig = attrKeys.map(key => ({
+    key,
+    label: successProfile.attributeConfig?.find(a => a.key === key)?.label || key,
+    value: competencyStats[key],
+  }));
+
+  // Build partial candidate for score calculation
+  const partialCandidate: CandidateProfile = {
+    personalInfo: {
+      name: basicInfo.name || 'Unknown',
+      yearsExperience: basicInfo.yearsExperience || 0,
+      currentRole: basicInfo.currentRole || 'Not specified',
+    },
+    role: successProfile.role,
+    competencyStats,
+    attributeConfig,
+    requiredExperiences,
+    academicBackground: { minDegree: '', preferredFields: [], certifications: [] },
+    toolbox,
+    motivations: [],
+    painPoints: [],
+    weekInLife: [],
+    culturalFitAssessment: {
+      score: semanticResult.cultural.overall,
+      assessedAt: new Date().toISOString(),
+      assessedBy: 'Semantic Language Analysis',
+      notes: semanticResult.cultural.reasoning || 'Assessed through deep language analysis of resume content against success profile',
+    },
+    matchScore: {
+      overall: 0,
+      breakdown: { competencies: 0, experiences: 0, tools: 0, cultural: 0 },
+    },
+  };
+
+  // Build minimal success profile for score calculation
+  const profileForCalc = {
+    role: successProfile.role,
+    competencyStats: {} as CompetencyStats,
+    requiredExperiences: successProfile.requiredExperiences,
+    toolbox: successProfile.toolbox,
+    motivations: successProfile.motivations || [],
+    attributeConfig: successProfile.attributeConfig || [],
+    academicBackground: successProfile.academicBackground || { minDegree: '', preferredFields: [], certifications: [] },
+    painPoints: successProfile.painPoints || [],
+    weekInLife: [],
+  };
+
+  // Use success profile's competency stats for comparison
+  if (successProfile.attributeConfig?.length) {
+    successProfile.attributeConfig.forEach(attr => {
+      profileForCalc.competencyStats[attr.key] = attr.value;
+    });
+  } else {
+    attrKeys.forEach(key => {
+      profileForCalc.competencyStats[key] = 85;
+    });
+  }
+
+  // Calculate match score using the unified function
+  const calculatedScore = calculateMatchScore(profileForCalc, partialCandidate, DEFAULT_WEIGHTS);
+
+  return {
+    ...partialCandidate,
+    matchScore: calculatedScore,
+  };
+}
+
+/**
+ * Parse multiple resumes with semantic matching
+ */
+export async function parseMultipleResumesWithSemanticMatching(
+  files: File[],
+  apiKey: string,
+  successProfile: SuccessProfileContext
+): Promise<{ candidates: CandidateProfile[]; errors: string[] }> {
+  const candidates: CandidateProfile[] = [];
+  const errors: string[] = [];
+
+  for (const file of files) {
+    try {
+      const candidate = await parseResumeWithSemanticMatching(file, apiKey, successProfile);
       candidates.push(candidate);
     } catch (error) {
       errors.push(
