@@ -525,6 +525,36 @@ function buildSemanticMatchingPrompt(
 ): string {
   return `You are an expert talent assessment analyst. Analyze the semantic "closeness of fit" between a candidate and a success profile.
 
+## CRITICAL DISTINCTION: FUNCTIONAL ROLE vs INDUSTRY
+This is the most important concept for accurate matching:
+
+1. **FUNCTIONAL ROLE/EXPERTISE** = What the candidate DOES (their job function)
+   - Examples: Finance, Operations, Marketing, Engineering, HR, Legal, Sales
+   - A "Finance Director at an airline" has FINANCE expertise, NOT aviation operations expertise
+   - A "VP Operations at a bank" has OPERATIONS expertise in banking, NOT financial trading expertise
+
+2. **INDUSTRY** = What sector/company they work FOR
+   - Examples: Aviation, Healthcare, Manufacturing, Retail, Banking
+   - Working FOR an aviation company does NOT mean having aviation operations expertise
+   - A CFO at Boeing has Finance expertise in the aviation INDUSTRY, not aviation/aerospace engineering expertise
+
+## EXPERIENCE MATCHING RULES (VERY IMPORTANT):
+When matching required experiences like "Aviation Experience" or "Operations Experience":
+- ✅ ACHIEVED = Candidate's JOB FUNCTION directly involves the required domain
+- ❌ NOT ACHIEVED = Candidate merely works in that INDUSTRY but different function
+
+Examples:
+- "Aviation, Logistics, or Cargo Handling Experience" requirement:
+  - ✅ VP Operations at cargo airline (function IS operations/logistics)
+  - ✅ Supply Chain Director at aviation company (function IS logistics)
+  - ❌ Finance Director at aviation company (function is Finance, not operations)
+  - ❌ HR Manager at cargo handling company (function is HR, not cargo operations)
+
+- "Manufacturing Experience" requirement:
+  - ✅ Plant Manager at auto company (function IS manufacturing)
+  - ❌ CFO at manufacturing company (function is Finance)
+  - ❌ Legal Counsel at factory (function is Legal)
+
 ## IMPORTANT: Use LANGUAGE ANALYSIS, not quantitative ratings
 - Do NOT convert text like "Exceeds" or "Meets" to scores
 - Instead, analyze the MEANING and CONTEXT of descriptions
@@ -550,6 +580,7 @@ Organizational Values: ${profile.culturalDescriptors.values.join(', ')}
 
 ## Candidate: ${candidate.name}
 Current Role: ${candidate.currentRole}
+Professional Discipline: ${candidate.skillText.professionalDiscipline || 'Unknown'}
 Years Experience: ${candidate.experienceText.yearsExperience}
 
 ### Candidate's Behavioral Indicators:
@@ -582,6 +613,11 @@ Values: ${candidate.culturalText.values || 'Not specified'}
 ## ANALYSIS TASK:
 For each dimension, analyze the SEMANTIC CLOSENESS between candidate descriptors and profile requirements.
 
+CRITICAL FOR EXPERIENCE MATCHING:
+- Carefully identify the candidate's FUNCTIONAL EXPERTISE from their job titles and responsibilities
+- Only mark experience as "achieved" if the candidate's FUNCTION matches the required domain
+- Do NOT credit industry exposure as functional expertise
+
 Respond with ONLY valid JSON (no markdown):
 {
   "attributes": {
@@ -593,7 +629,7 @@ ${profile.attributeDescriptors.map(a => `      "${a.key}": {"score": <0-100>, "r
   "experiences": {
     "overall": <0-100 closeness score>,
     "items": [
-${profile.experienceDescriptors.map(e => `      {"name": "${e.name}", "achieved": <true/false>, "fitScore": <0-100>, "reasoning": "<semantic analysis>"}`).join(',\n')}
+${profile.experienceDescriptors.map(e => `      {"name": "${e.name}", "achieved": <true/false - based on FUNCTIONAL match not industry>, "fitScore": <0-100>, "reasoning": "<explain if function matches or just industry>"}`).join(',\n')}
     ]
   },
   "skills": {
@@ -611,11 +647,11 @@ ${profile.skillDescriptors.map(s => `      {"name": "${s.name}", "achieved": <tr
 }
 
 SCORING GUIDANCE (based on semantic closeness, NOT ratings):
-- 90-100: Strong semantic alignment - candidate descriptors clearly match profile requirements
-- 75-89: Good alignment - most key concepts and capabilities are present
-- 60-74: Moderate alignment - some relevant indicators but gaps exist
-- 40-59: Weak alignment - limited semantic overlap
-- Below 40: Poor alignment - significant mismatch in language/concepts`;
+- 90-100: Strong semantic alignment - candidate's FUNCTION directly matches requirements
+- 75-89: Good alignment - related functional experience with transferable skills
+- 60-74: Moderate alignment - some functional overlap but gaps exist
+- 40-59: Weak alignment - different function but same industry (industry exposure only)
+- Below 40: Poor alignment - different function AND different industry`;
 }
 
 /**

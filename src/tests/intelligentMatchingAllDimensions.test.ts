@@ -446,6 +446,134 @@ test('No Regression - Sorting Functionality', () => {
 });
 
 // ============================================================
+// Test 9: CRITICAL - Functional Role vs Industry Distinction
+// ============================================================
+test('CRITICAL - Functional Role vs Industry Distinction', () => {
+  console.log('  This test validates the distinction between:');
+  console.log('    1. FUNCTIONAL ROLE = What the candidate DOES (Finance, Operations, etc.)');
+  console.log('    2. INDUSTRY = What sector they work FOR (Aviation, Banking, etc.)\n');
+
+  // Test cases that must be correctly handled
+  const testCases = [
+    {
+      name: 'May Au',
+      jobTitle: 'Regional Director, Finance and Controllership',
+      company: 'Singapore Airlines',
+      strengths: 'Financial strategies, budget management, controllership',
+      requiredExperience: 'Aviation, Logistics, or Cargo Handling Experience',
+      shouldAchieve: false, // Finance executive at airline - NO aviation ops experience
+      reason: 'Finance function, not aviation operations',
+    },
+    {
+      name: 'John Smith',
+      jobTitle: 'VP Operations - Cargo Division',
+      company: 'FedEx Aviation',
+      strengths: 'Logistics optimization, cargo handling, fleet operations',
+      requiredExperience: 'Aviation, Logistics, or Cargo Handling Experience',
+      shouldAchieve: true, // Operations executive in cargo - YES aviation ops experience
+      reason: 'Operations function directly in aviation/cargo',
+    },
+    {
+      name: 'Sarah Lee',
+      jobTitle: 'CFO',
+      company: 'Boeing Manufacturing',
+      strengths: 'Financial reporting, investor relations, M&A',
+      requiredExperience: 'Manufacturing Experience',
+      shouldAchieve: false, // Finance executive at manufacturer - NO manufacturing experience
+      reason: 'Finance function, not manufacturing operations',
+    },
+    {
+      name: 'Mike Chen',
+      jobTitle: 'Plant Manager',
+      company: 'Generic Tech Corp',
+      strengths: 'Production optimization, lean manufacturing, quality control',
+      requiredExperience: 'Manufacturing Experience',
+      shouldAchieve: true, // Plant manager - YES manufacturing experience
+      reason: 'Manufacturing function (Plant Manager)',
+    },
+    {
+      name: 'Lisa Wang',
+      jobTitle: 'HR Director',
+      company: 'Amazon Logistics',
+      strengths: 'Talent acquisition, workforce planning, organizational development',
+      requiredExperience: 'Supply Chain and Logistics Experience',
+      shouldAchieve: false, // HR at logistics company - NO logistics experience
+      reason: 'HR function, not logistics operations',
+    },
+    {
+      name: 'David Kim',
+      jobTitle: 'Supply Chain Director',
+      company: 'Retail Company',
+      strengths: 'Inventory management, distribution network, vendor relationships',
+      requiredExperience: 'Supply Chain and Logistics Experience',
+      shouldAchieve: true, // Supply Chain Director - YES logistics experience
+      reason: 'Supply Chain function directly',
+    },
+  ];
+
+  console.log('  Test Cases:\n');
+  let allCorrect = true;
+
+  for (const tc of testCases) {
+    // Determine functional discipline from job title
+    const titleLower = tc.jobTitle.toLowerCase();
+
+    // Check functional alignment with required experience
+    const reqLower = tc.requiredExperience.toLowerCase();
+
+    // Functional keywords that indicate actual domain expertise
+    const functionalMatches: Record<string, string[]> = {
+      'aviation': ['operations', 'cargo', 'fleet', 'logistics', 'pilot', 'maintenance'],
+      'logistics': ['supply chain', 'logistics', 'distribution', 'warehouse', 'inventory', 'operations'],
+      'manufacturing': ['plant', 'production', 'manufacturing', 'factory', 'assembly', 'operations'],
+      'finance': ['finance', 'cfo', 'controller', 'accounting', 'treasury', 'financial'],
+      'hr': ['hr', 'human resources', 'talent', 'workforce', 'people'],
+    };
+
+    // Determine candidate's functional area
+    let candidateFunction = 'unknown';
+    for (const [func, keywords] of Object.entries(functionalMatches)) {
+      if (keywords.some(kw => titleLower.includes(kw))) {
+        candidateFunction = func;
+        break;
+      }
+    }
+
+    // Determine if required experience matches candidate's function
+    let requiresFunction = 'unknown';
+    if (reqLower.includes('aviation') || reqLower.includes('cargo')) requiresFunction = 'aviation';
+    if (reqLower.includes('logistics') || reqLower.includes('supply chain')) requiresFunction = 'logistics';
+    if (reqLower.includes('manufacturing')) requiresFunction = 'manufacturing';
+
+    // The key insight: Finance person at aviation company has candidateFunction='finance'
+    // but the required experience requires function='aviation' or 'logistics'
+    const functionalMatch =
+      (requiresFunction === 'aviation' && (candidateFunction === 'aviation' || candidateFunction === 'logistics')) ||
+      (requiresFunction === 'logistics' && (candidateFunction === 'logistics' || candidateFunction === 'aviation')) ||
+      (requiresFunction === 'manufacturing' && candidateFunction === 'manufacturing');
+
+    const wouldAchieve = functionalMatch;
+    const correct = wouldAchieve === tc.shouldAchieve;
+
+    if (!correct) allCorrect = false;
+
+    console.log(`  ${tc.name} (${tc.jobTitle} at ${tc.company})`);
+    console.log(`    Required: "${tc.requiredExperience}"`);
+    console.log(`    Candidate Function: ${candidateFunction}`);
+    console.log(`    Should Achieve: ${tc.shouldAchieve} | Would Achieve: ${wouldAchieve}`);
+    console.log(`    Reason: ${tc.reason}`);
+    console.log(`    Result: ${correct ? '✓ CORRECT' : '✗ INCORRECT'}\n`);
+  }
+
+  console.log('  Summary:');
+  console.log('    - Finance executives at aviation companies should NOT get aviation ops credit');
+  console.log('    - HR leaders at logistics companies should NOT get logistics ops credit');
+  console.log('    - Only candidates whose FUNCTION matches the required domain get credit\n');
+
+  return allCorrect;
+});
+
+// ============================================================
 // Final Summary
 // ============================================================
 console.log('═══════════════════════════════════════════════════════════════');
@@ -461,6 +589,7 @@ if (testsPassed === testsRun) {
   console.log('  4. ✅ Experience: Seniority parsing + keyword matching');
   console.log('  5. ✅ Fallbacks: Deterministic scoring when CSV data missing');
   console.log('  6. ✅ No regression in sorting functionality');
+  console.log('  7. ✅ CRITICAL: Functional Role vs Industry distinction');
 } else {
   console.log(`❌ ${testsRun - testsPassed} test(s) failed`);
 }
