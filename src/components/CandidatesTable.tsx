@@ -42,28 +42,22 @@ export function CandidatesTable({ candidates, onSelectCandidate, onViewDetails, 
   // Calculate match scores and skills match for each candidate
   const candidatesWithScores = useMemo(() => {
     return candidates.map(candidate => {
-      // Calculate overall match score from competency stats
-      const competencyValues = Object.values(candidate.competencyStats || {});
-      const avgCompetency = competencyValues.length > 0
-        ? competencyValues.reduce((a, b) => a + b, 0) / competencyValues.length
-        : 50;
+      // Use the actual match score from the candidate profile (calculated by calculateMatchScore utility)
+      const actualMatchScore = candidate.matchScore?.overall || 0;
 
-      // Calculate skills match percentage
+      // Calculate skills match percentage for display
       const allTools = candidate.toolbox?.flatMap(cat => cat.tools) || [];
       const achievedTools = allTools.filter(t => t.achieved).length;
       const skillsMatch = allTools.length > 0 ? Math.round((achievedTools / allTools.length) * 100) : 0;
 
-      // Calculate experiences match
+      // Calculate experiences match for display
       const achievedExp = candidate.requiredExperiences?.filter(e => e.achieved).length || 0;
       const totalExp = candidate.requiredExperiences?.length || 1;
       const expMatch = Math.round((achievedExp / totalExp) * 100);
 
-      // Overall score combines competency, skills, and experiences
-      const overallScore = Math.round((avgCompetency * 0.4) + (skillsMatch * 0.3) + (expMatch * 0.3));
-
       return {
         ...candidate,
-        calculatedScore: overallScore,
+        calculatedScore: actualMatchScore, // Use actual match score, not a recalculated one
         skillsMatchPercent: skillsMatch,
         expMatchPercent: expMatch,
       };
