@@ -230,8 +230,8 @@ export async function parseCandidatesCSVWithClaude(
 
           console.log(`Batch ${batchNum}: Got ${response.candidates.length} candidates`);
 
-          const profiles = response.candidates.map(c =>
-            buildCandidateProfile(c, successProfile)
+          const profiles = response.candidates.map((c, idx) =>
+            buildCandidateProfile(c, successProfile, batch[idx], keyColumns)
           );
 
           return { profiles, error: null };
@@ -433,12 +433,140 @@ function deterministicVariance(baseScore: number, index: number, total: number):
 }
 
 /**
+ * Experience keyword matching patterns
+ * Maps experience categories/names to keywords that indicate achievement
+ */
+const EXPERIENCE_MATCHERS: Record<string, string[]> = {
+  // Leadership patterns
+  'leadership': ['md', 'managing director', 'ceo', 'coo', 'cfo', 'cto', 'chief', 'president', 'vp', 'vice president', 'svp', 'evp', 'director', 'head of', 'general manager', 'gm', 'gmb', 'c-suite', 'executive'],
+  'senior': ['senior', 'sr', 'lead', 'principal', 'chief', 'head', 'director', 'vp', 'vice president', 'md', 'managing director', 'gmb', 'gm-', 'jg1', 'jg2', 'jg3', 'executive', 'c-level'],
+  'management': ['manager', 'management', 'managing', 'supervisor', 'team lead', 'head of', 'director'],
+  'aviation': ['aviation', 'airline', 'airport', 'cargo', 'freight', 'logistics', 'express', 'dhl', 'fedex', 'ups', 'air', 'flight', 'aircraft'],
+
+  // Operations patterns
+  'operations': ['operations', 'ops', 'operational', 'supply chain', 'logistics', 'warehouse', 'distribution', 'fulfillment', 'process'],
+  'large-scale': ['large', 'scale', 'enterprise', 'global', 'regional', 'national', 'international', 'multi', 'cross-functional', 'emea', 'apac', 'americas'],
+
+  // Business patterns
+  'business': ['business', 'commercial', 'sales', 'revenue', 'p&l', 'profit', 'growth', 'expansion', 'market', 'strategy'],
+  'development': ['development', 'growth', 'expansion', 'new market', 'transformation', 'innovation', 'initiative'],
+
+  // International patterns
+  'international': ['international', 'global', 'multi-country', 'cross-border', 'emea', 'apac', 'americas', 'regional', 'multinational'],
+  'multicultural': ['multicultural', 'diverse', 'international', 'global', 'cross-cultural', 'multi-national'],
+
+  // P&L / Financial
+  'p&l': ['p&l', 'profit', 'loss', 'budget', 'financial', 'revenue', 'cost', 'md', 'managing director', 'gm', 'general manager', 'ceo', 'coo', 'cfo', 'country manager', 'regional manager', 'head of'],
+
+  // Strategy
+  'strategy': ['strategy', 'strategic', 'planning', 'transformation', 'vision', 'roadmap'],
+};
+
+/**
+ * Analyze candidate data to determine if an experience requirement is met
+ */
+function analyzeExperienceMatch(
+  experience: { category: string; name: string; description: string; minYears: number },
+  candidateData: string,
+  yearsExperience: number
+): boolean {
+  const dataLower = candidateData.toLowerCase();
+  const expName = experience.name.toLowerCase();
+  const expCategory = experience.category.toLowerCase();
+  const expDesc = experience.description.toLowerCase();
+
+  // Extract key terms from the experience requirement
+  const expTerms = `${expName} ${expCategory} ${expDesc}`.split(/\s+/);
+
+  let matchScore = 0;
+  let matchedPatterns: string[] = [];
+
+  // Check each matcher category
+  for (const [category, patterns] of Object.entries(EXPERIENCE_MATCHERS)) {
+    // Check if this category is relevant to the experience
+    const categoryRelevant = expTerms.some(term =>
+      category.includes(term) || term.includes(category)
+    ) || expName.includes(category) || expCategory.includes(category);
+
+    if (categoryRelevant) {
+      // Check if candidate data matches any patterns in this category
+      for (const pattern of patterns) {
+        if (dataLower.includes(pattern)) {
+          matchScore += 1;
+          matchedPatterns.push(pattern);
+        }
+      }
+    }
+  }
+
+  // Direct keyword matching for specific experience terms
+  const directKeywords = expName.split(/[\s-]+/).filter(w => w.length > 3);
+  for (const keyword of directKeywords) {
+    if (dataLower.includes(keyword.toLowerCase())) {
+      matchScore += 2; // Direct matches are more valuable
+    }
+  }
+
+  // Check years requirement (with some flexibility)
+  const meetsYearsRequirement = yearsExperience >= (experience.minYears * 0.7); // 70% threshold for flexibility
+
+  // Determine achievement based on match score and years
+  // Higher match scores = more confident the candidate has the experience
+  const achieved = matchScore >= 2 && meetsYearsRequirement;
+
+  return achieved;
+}
+
+/**
+ * Extract all relevant text from a candidate's row data for experience matching
+ */
+function extractCandidateTextForMatching(
+  row: Record<string, string> | undefined,
+  keyColumns: Record<string, string | null>,
+  jobTitle: string
+): string {
+  if (!row) return jobTitle.toLowerCase();
+
+  const parts: string[] = [jobTitle];
+
+  // Add all available fields that might indicate experience
+  const fieldsToCheck: (keyof typeof keyColumns)[] = [
+    'job', 'jobGrade', 'department', 'criticalExp', 'careerAspirations',
+    'strengthsWeaknesses', 'strengths', 'attributes', 'potential', 'talentCategory'
+  ];
+
+  for (const field of fieldsToCheck) {
+    const colName = keyColumns[field];
+    if (colName && row[colName]?.trim()) {
+      parts.push(row[colName].trim());
+    }
+  }
+
+  // Also check for any column that might contain relevant keywords
+  for (const [colName, value] of Object.entries(row)) {
+    if (value?.trim() && !parts.includes(value.trim())) {
+      const lowerCol = colName.toLowerCase();
+      if (lowerCol.includes('experience') || lowerCol.includes('role') ||
+          lowerCol.includes('position') || lowerCol.includes('level') ||
+          lowerCol.includes('organization') || lowerCol.includes('business') ||
+          lowerCol.includes('division') || lowerCol.includes('unit')) {
+        parts.push(value.trim());
+      }
+    }
+  }
+
+  return parts.join(' ').toLowerCase();
+}
+
+/**
  * Build CandidateProfile from simplified response
  * Uses deterministic scoring and calculateMatchScore() for consistency
  */
 function buildCandidateProfile(
   response: SimpleCandidateResponse,
-  successProfile: SuccessProfileContext
+  successProfile: SuccessProfileContext,
+  rowData?: Record<string, string>,
+  keyColumns?: Record<string, string | null>
 ): CandidateProfile {
   const baseScore = response.sc || 50;
 
@@ -453,24 +581,42 @@ function buildCandidateProfile(
     competencyStats[key] = deterministicVariance(baseScore, index, attrKeys.length);
   });
 
-  // Mark experiences as achieved DETERMINISTICALLY based on score threshold and position
-  // Higher scored candidates achieve more experiences in order
+  // Extract candidate text for experience matching
+  const candidateText = extractCandidateTextForMatching(
+    rowData,
+    keyColumns || {},
+    response.r || ''
+  );
+  const yearsExp = response.y || 0;
+
+  // Mark experiences as achieved using INTELLIGENT MATCHING based on candidate data
   const requiredExperiences = successProfile.requiredExperiences.map((exp, index) => {
-    // Calculate how many experiences should be achieved based on score
-    const achievementThreshold = 100 - (index / successProfile.requiredExperiences.length) * 60;
+    // First try intelligent matching based on actual candidate data
+    const intelligentMatch = analyzeExperienceMatch(exp, candidateText, yearsExp);
+
+    // Fallback to score-based threshold if no data available (FIXED formula)
+    // Now uses (index + 1) to ensure first experience is achievable
+    const scoreThreshold = 100 - ((index + 1) / (successProfile.requiredExperiences.length + 1)) * 50;
+    const scoreBasedMatch = baseScore >= scoreThreshold;
+
+    // Use intelligent match if we have row data, otherwise fall back to score-based
+    const achieved = rowData ? intelligentMatch : scoreBasedMatch;
+
     return {
       ...exp,
-      achieved: baseScore >= achievementThreshold,
+      achieved,
     };
   });
 
   // Mark tools as achieved DETERMINISTICALLY based on score threshold and position
+  // FIXED formula: ensures all tools are potentially achievable
   let toolIndex = 0;
   const totalTools = successProfile.toolbox.reduce((sum, cat) => sum + cat.tools.length, 0);
   const toolbox: ToolCategory[] = successProfile.toolbox.map(cat => ({
     category: cat.category,
     tools: cat.tools.map(tool => {
-      const achievementThreshold = 100 - (toolIndex / Math.max(1, totalTools)) * 60;
+      // Fixed threshold calculation - now first tool requires ~90, last requires ~40
+      const achievementThreshold = 90 - (toolIndex / Math.max(1, totalTools)) * 50;
       toolIndex++;
       return {
         ...tool,
