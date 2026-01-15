@@ -25,9 +25,8 @@ interface CandidatesTableProps {
   selectedCandidateId?: string;
 }
 
-type SortField = 'name' | 'role' | 'matchScore' | 'experience' | 'skillsMatch';
+type SortField = 'name' | 'role' | 'matchScore' | 'experience' | 'skillsMatch' | 'attributes' | 'expScore' | 'cultural';
 type SortDirection = 'asc' | 'desc';
-type FilterRange = 'all' | 'high' | 'medium' | 'low';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
@@ -37,15 +36,20 @@ export function CandidatesTable({ candidates, onSelectCandidate, onViewDetails, 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterRange, setFilterRange] = useState<FilterRange>('all');
 
-  // Calculate match scores and skills match for each candidate
+  // Calculate match scores and all breakdown scores for each candidate
   const candidatesWithScores = useMemo(() => {
     return candidates.map(candidate => {
       // Use the actual match score from the candidate profile (calculated by calculateMatchScore utility)
       const actualMatchScore = candidate.matchScore?.overall || 0;
 
-      // Calculate skills match percentage for display
+      // Get breakdown scores from matchScore
+      const attributesScore = candidate.matchScore?.breakdown?.competencies || 0;
+      const experiencesScore = candidate.matchScore?.breakdown?.experiences || 0;
+      const skillsScore = candidate.matchScore?.breakdown?.tools || 0;
+      const culturalScore = candidate.matchScore?.breakdown?.cultural || 0;
+
+      // Calculate skills match percentage for display (visual bar)
       const allTools = candidate.toolbox?.flatMap(cat => cat.tools) || [];
       const achievedTools = allTools.filter(t => t.achieved).length;
       const skillsMatch = allTools.length > 0 ? Math.round((achievedTools / allTools.length) * 100) : 0;
@@ -58,13 +62,17 @@ export function CandidatesTable({ candidates, onSelectCandidate, onViewDetails, 
       return {
         ...candidate,
         calculatedScore: actualMatchScore, // Use actual match score, not a recalculated one
+        attributesScore,    // For sorting by attributes
+        experiencesScore,   // For sorting by experiences
+        skillsScore,        // For sorting by skill proficiency
+        culturalScore,      // For sorting by cultural alignment
         skillsMatchPercent: skillsMatch,
         expMatchPercent: expMatch,
       };
     });
   }, [candidates]);
 
-  // Filter candidates
+  // Filter candidates (search only - sorting replaces score range filter)
   const filteredCandidates = useMemo(() => {
     let filtered = candidatesWithScores;
 
@@ -77,21 +85,8 @@ export function CandidatesTable({ candidates, onSelectCandidate, onViewDetails, 
       );
     }
 
-    // Score range filter
-    if (filterRange !== 'all') {
-      filtered = filtered.filter(c => {
-        const score = c.calculatedScore;
-        switch (filterRange) {
-          case 'high': return score >= 75;
-          case 'medium': return score >= 50 && score < 75;
-          case 'low': return score < 50;
-          default: return true;
-        }
-      });
-    }
-
     return filtered;
-  }, [candidatesWithScores, searchTerm, filterRange]);
+  }, [candidatesWithScores, searchTerm]);
 
   // Sort candidates
   const sortedCandidates = useMemo(() => {
@@ -117,8 +112,20 @@ export function CandidatesTable({ candidates, onSelectCandidate, onViewDetails, 
           bVal = b.personalInfo.yearsExperience;
           break;
         case 'skillsMatch':
-          aVal = a.skillsMatchPercent;
-          bVal = b.skillsMatchPercent;
+          aVal = a.skillsScore;
+          bVal = b.skillsScore;
+          break;
+        case 'attributes':
+          aVal = a.attributesScore;
+          bVal = b.attributesScore;
+          break;
+        case 'expScore':
+          aVal = a.experiencesScore;
+          bVal = b.experiencesScore;
+          break;
+        case 'cultural':
+          aVal = a.culturalScore;
+          bVal = b.culturalScore;
           break;
       }
 
@@ -219,19 +226,27 @@ export function CandidatesTable({ candidates, onSelectCandidate, onViewDetails, 
           />
         </div>
 
-        {/* Score filter */}
+        {/* Sort by dropdown */}
         <div className="flex items-center gap-2">
           <Filter className="w-4 h-4 text-gray-500" />
           <select
-            value={filterRange}
-            onChange={(e) => { setFilterRange(e.target.value as FilterRange); setCurrentPage(1); }}
+            value={sortField}
+            onChange={(e) => { setSortField(e.target.value as SortField); setSortDirection('desc'); setCurrentPage(1); }}
             className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500"
           >
-            <option value="all">All Scores</option>
-            <option value="high">High Match (75+)</option>
-            <option value="medium">Medium (50-74)</option>
-            <option value="low">Low (&lt;50)</option>
+            <option value="matchScore">Overall Weighted Score</option>
+            <option value="attributes">By Attributes</option>
+            <option value="expScore">By Experience</option>
+            <option value="skillsMatch">By Skill Proficiency</option>
+            <option value="cultural">By Cultural Alignment</option>
           </select>
+          <button
+            onClick={() => setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc')}
+            className="p-2 border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors"
+            title={sortDirection === 'desc' ? 'Highest first' : 'Lowest first'}
+          >
+            {sortDirection === 'desc' ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+          </button>
         </div>
 
         {/* Page size */}

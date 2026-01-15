@@ -4,7 +4,7 @@
  * Tests deterministic scoring (no randomness)
  */
 
-import { calculateMatchScore, DEFAULT_WEIGHTS, type MatchWeights } from '../utils/calculateMatch';
+import { calculateMatchScore, DEFAULT_WEIGHTS } from '../utils/calculateMatch';
 import type { CandidateProfile, CompetencyStats, SuccessProfile } from '../types';
 
 // Mock success profile
