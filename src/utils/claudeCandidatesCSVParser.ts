@@ -438,8 +438,8 @@ function deterministicVariance(baseScore: number, index: number, total: number):
  */
 const EXPERIENCE_MATCHERS: Record<string, string[]> = {
   // Leadership patterns
-  'leadership': ['md', 'managing director', 'ceo', 'coo', 'cfo', 'cto', 'chief', 'president', 'vp', 'vice president', 'svp', 'evp', 'director', 'head of', 'general manager', 'gm', 'gmb', 'c-suite', 'executive'],
-  'senior': ['senior', 'sr', 'lead', 'principal', 'chief', 'head', 'director', 'vp', 'vice president', 'md', 'managing director', 'gmb', 'gm-', 'jg1', 'jg2', 'jg3', 'executive', 'c-level'],
+  'leadership': ['md', 'managing director', 'ceo', 'coo', 'cfo', 'cto', 'chief', 'president', 'vp', 'vice president', 'svp', 'evp', 'director', 'head of', 'general manager', 'gm', 'c-suite', 'executive'],
+  'senior': ['senior', 'sr', 'lead', 'principal', 'chief', 'head', 'director', 'vp', 'vice president', 'md', 'managing director', 'executive', 'c-level'],
   'management': ['manager', 'management', 'managing', 'supervisor', 'team lead', 'head of', 'director'],
   'aviation': ['aviation', 'airline', 'airport', 'cargo', 'freight', 'logistics', 'express', 'dhl', 'fedex', 'ups', 'air', 'flight', 'aircraft'],
 
@@ -463,7 +463,154 @@ const EXPERIENCE_MATCHERS: Record<string, string[]> = {
 };
 
 /**
+ * Parse hierarchical seniority level from candidate data
+ * Returns a seniority score (higher = more senior) and boolean indicators
+ *
+ * Handles various formats:
+ * - GMB-1, GMB-2, GMB-3 (lower number = more senior, GMB = General Management Board)
+ * - JG1, JG2, JG3, JG4 (lower number = more senior, JG = Job Grade)
+ * - Level 1, Level 2, etc.
+ * - Grade A, Grade B, etc.
+ * - Band 1, Band 2, etc.
+ */
+function parseSeniorityLevel(candidateData: string): {
+  seniorityScore: number;
+  isExecutive: boolean;
+  isSeniorManagement: boolean;
+  isManagement: boolean;
+} {
+  const dataLower = candidateData.toLowerCase();
+
+  let seniorityScore = 0;
+  let isExecutive = false;
+  let isSeniorManagement = false;
+  let isManagement = false;
+
+  // Check for executive-level titles (highest seniority)
+  const executiveTitles = ['ceo', 'coo', 'cfo', 'cto', 'cio', 'chief', 'president', 'managing director', ' md ', 'md,', 'md-'];
+  for (const title of executiveTitles) {
+    if (dataLower.includes(title)) {
+      isExecutive = true;
+      seniorityScore = Math.max(seniorityScore, 100);
+    }
+  }
+
+  // Check for senior management titles
+  // Use regex for VP/GM to allow various formats (VP Operations, VP-Sales, etc.)
+  const seniorTitles = ['svp', 'evp', 'senior vice president', 'executive vice president', 'vice president', 'general manager'];
+  for (const title of seniorTitles) {
+    if (dataLower.includes(title)) {
+      isSeniorManagement = true;
+      seniorityScore = Math.max(seniorityScore, 85);
+    }
+  }
+  // Check for VP/GM abbreviations with flexible matching
+  if (/\bvp[\s\-,]|\bvp$/i.test(dataLower) || /\bgm[\s\-,]|\bgm$/i.test(dataLower)) {
+    isSeniorManagement = true;
+    seniorityScore = Math.max(seniorityScore, 85);
+  }
+
+  // Check for management titles
+  const managementTitles = ['director', 'head of', 'manager', 'lead', 'supervisor'];
+  for (const title of managementTitles) {
+    if (dataLower.includes(title)) {
+      isManagement = true;
+      seniorityScore = Math.max(seniorityScore, 60);
+    }
+  }
+
+  // Parse hierarchical grade patterns (GMB-1, JG1, Level 1, etc.)
+  // Lower numbers typically indicate higher seniority
+  const hierarchicalPatterns = [
+    // GMB (General Management Board) - GMB-1 is C-suite adjacent
+    { pattern: /gmb[-\s]?(\d+)/i, maxLevel: 5, baseScore: 95 },
+    // JG (Job Grade) - JG1 is typically senior executive
+    { pattern: /jg[-\s]?(\d+)/i, maxLevel: 10, baseScore: 90 },
+    // Level patterns
+    { pattern: /level[-\s]?(\d+)/i, maxLevel: 10, baseScore: 85 },
+    // Grade patterns (numeric)
+    { pattern: /grade[-\s]?(\d+)/i, maxLevel: 10, baseScore: 85 },
+    // Band patterns
+    { pattern: /band[-\s]?(\d+)/i, maxLevel: 10, baseScore: 80 },
+  ];
+
+  for (const { pattern, maxLevel, baseScore } of hierarchicalPatterns) {
+    const match = dataLower.match(pattern);
+    if (match) {
+      const level = parseInt(match[1], 10);
+      // Calculate score: lower level number = higher seniority
+      // Level 1 gets baseScore, higher levels get progressively lower scores
+      const levelScore = baseScore - ((level - 1) / maxLevel) * 40;
+      seniorityScore = Math.max(seniorityScore, levelScore);
+
+      // Set flags based on level
+      if (level <= 2) {
+        isExecutive = true;
+      } else if (level <= 4) {
+        isSeniorManagement = true;
+      } else {
+        isManagement = true;
+      }
+    }
+  }
+
+  // Parse letter-based grades (Grade A, Band A, etc.)
+  const letterPatterns = [
+    { pattern: /grade[-\s]?([a-e])/i, baseScore: 85 },
+    { pattern: /band[-\s]?([a-e])/i, baseScore: 80 },
+  ];
+
+  for (const { pattern, baseScore } of letterPatterns) {
+    const match = dataLower.match(pattern);
+    if (match) {
+      const letter = match[1].toLowerCase();
+      const letterIndex = letter.charCodeAt(0) - 'a'.charCodeAt(0); // a=0, b=1, etc.
+      const letterScore = baseScore - (letterIndex * 10);
+      seniorityScore = Math.max(seniorityScore, letterScore);
+
+      if (letterIndex <= 1) {
+        isSeniorManagement = true;
+      } else {
+        isManagement = true;
+      }
+    }
+  }
+
+  return { seniorityScore, isExecutive, isSeniorManagement, isManagement };
+}
+
+/**
+ * Calculate effective years requirement based on seniority
+ * Senior executives may have equivalent experience even with fewer years in specific role
+ */
+function calculateEffectiveYearsRequirement(
+  minYears: number,
+  seniorityScore: number,
+  isExecutive: boolean,
+  isSeniorManagement: boolean
+): number {
+  // Base flexibility: 70% of required years
+  let flexibilityFactor = 0.7;
+
+  // Executives get more flexibility - their broad experience compensates
+  if (isExecutive) {
+    flexibilityFactor = 0.5; // Only need 50% of stated years
+  } else if (isSeniorManagement) {
+    flexibilityFactor = 0.6; // Need 60% of stated years
+  }
+
+  // Additional flexibility based on seniority score
+  // Very senior candidates (score > 80) get extra credit
+  if (seniorityScore > 80) {
+    flexibilityFactor *= 0.9;
+  }
+
+  return minYears * flexibilityFactor;
+}
+
+/**
  * Analyze candidate data to determine if an experience requirement is met
+ * Uses flexible seniority detection and contextual years requirements
  */
 function analyzeExperienceMatch(
   experience: { category: string; name: string; description: string; minYears: number },
@@ -475,11 +622,14 @@ function analyzeExperienceMatch(
   const expCategory = experience.category.toLowerCase();
   const expDesc = experience.description.toLowerCase();
 
+  // Parse candidate's seniority level
+  const { seniorityScore, isExecutive, isSeniorManagement, isManagement } = parseSeniorityLevel(candidateData);
+
   // Extract key terms from the experience requirement
   const expTerms = `${expName} ${expCategory} ${expDesc}`.split(/\s+/);
 
   let matchScore = 0;
-  let matchedPatterns: string[] = [];
+  const matchedPatterns: string[] = [];
 
   // Check each matcher category
   for (const [category, patterns] of Object.entries(EXPERIENCE_MATCHERS)) {
@@ -507,12 +657,36 @@ function analyzeExperienceMatch(
     }
   }
 
-  // Check years requirement (with some flexibility)
-  const meetsYearsRequirement = yearsExperience >= (experience.minYears * 0.7); // 70% threshold for flexibility
+  // Bonus points for seniority alignment
+  // If experience requires "senior" and candidate is senior, add bonus
+  const requiresSenior = expName.includes('senior') || expCategory.includes('senior') ||
+                         expDesc.includes('executive') || expDesc.includes('leadership');
+  if (requiresSenior && (isExecutive || isSeniorManagement)) {
+    matchScore += 3;
+  }
+
+  // Bonus for management experience when required
+  const requiresManagement = expName.includes('management') || expCategory.includes('management') ||
+                             expDesc.includes('managing') || expDesc.includes('lead');
+  if (requiresManagement && (isExecutive || isSeniorManagement || isManagement)) {
+    matchScore += 2;
+  }
+
+  // Calculate effective years requirement based on seniority
+  const effectiveMinYears = calculateEffectiveYearsRequirement(
+    experience.minYears,
+    seniorityScore,
+    isExecutive,
+    isSeniorManagement
+  );
+
+  // Check years requirement with contextual flexibility
+  const meetsYearsRequirement = yearsExperience >= effectiveMinYears;
 
   // Determine achievement based on match score and years
-  // Higher match scores = more confident the candidate has the experience
-  const achieved = matchScore >= 2 && meetsYearsRequirement;
+  // Lower threshold (1) for very senior candidates, higher (2) for others
+  const scoreThreshold = (isExecutive || isSeniorManagement) ? 1 : 2;
+  const achieved = matchScore >= scoreThreshold && meetsYearsRequirement;
 
   return achieved;
 }
