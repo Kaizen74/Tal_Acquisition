@@ -436,6 +436,328 @@ function deterministicVariance(baseScore: number, index: number, total: number):
  * Experience keyword matching patterns
  * Maps experience categories/names to keywords that indicate achievement
  */
+/**
+ * Parse competency rating text to numeric score
+ * Handles various HR rating formats: Exceeds, Meets, Below, numeric ratings, etc.
+ */
+function parseCompetencyRating(rating: string | undefined): number | null {
+  if (!rating || !rating.trim()) return null;
+
+  const ratingLower = rating.toLowerCase().trim();
+
+  // Numeric ratings (1-5 scale, 1-10 scale, percentage)
+  const numericMatch = ratingLower.match(/^(\d+(?:\.\d+)?)\s*(?:\/\s*(\d+))?%?$/);
+  if (numericMatch) {
+    const value = parseFloat(numericMatch[1]);
+    const maxValue = numericMatch[2] ? parseFloat(numericMatch[2]) : (value <= 5 ? 5 : value <= 10 ? 10 : 100);
+    return Math.round((value / maxValue) * 100);
+  }
+
+  // Text-based ratings - common HR terminology
+  const ratingMap: Record<string, number> = {
+    // Exceeds variations
+    'exceeds': 95,
+    'exceeds expectations': 95,
+    'outstanding': 95,
+    'excellent': 95,
+    'exceptional': 100,
+    'significantly exceeds': 100,
+    'far exceeds': 100,
+    'high performer': 90,
+
+    // Meets variations
+    'meets': 75,
+    'meets expectations': 75,
+    'satisfactory': 75,
+    'competent': 75,
+    'good': 80,
+    'solid': 80,
+    'fully meets': 80,
+    'on track': 75,
+
+    // Below variations
+    'below': 50,
+    'below expectations': 50,
+    'needs improvement': 45,
+    'developing': 55,
+    'partially meets': 55,
+    'inconsistent': 50,
+    'improvement needed': 45,
+
+    // Unsatisfactory variations
+    'unsatisfactory': 30,
+    'does not meet': 30,
+    'unacceptable': 25,
+    'failing': 20,
+
+    // Potential indicators
+    'high potential': 90,
+    'emerging talent': 85,
+    'ready now': 95,
+    'ready in 1-2 years': 80,
+    'ready in 2-3 years': 70,
+    'ready 2-3 years': 70,
+    'develop in role': 65,
+    'career risk': 40,
+
+    // Letter grades
+    'a': 95,
+    'a+': 100,
+    'a-': 90,
+    'b': 80,
+    'b+': 85,
+    'b-': 75,
+    'c': 65,
+    'c+': 70,
+    'c-': 60,
+    'd': 50,
+    'f': 30,
+  };
+
+  // Check for exact match
+  if (ratingMap[ratingLower] !== undefined) {
+    return ratingMap[ratingLower];
+  }
+
+  // Check for partial match (e.g., "Exceeds - Strong performer" should match "exceeds")
+  for (const [key, score] of Object.entries(ratingMap)) {
+    if (ratingLower.includes(key)) {
+      return score;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract competency scores from CSV row data
+ * Maps actual CSV competency columns to attribute scores
+ */
+function extractCompetencyScores(
+  row: Record<string, string> | undefined,
+  keyColumns: Record<string, string | null>
+): Record<string, number> {
+  const scores: Record<string, number> = {};
+
+  if (!row) return scores;
+
+  // Map CSV competency columns to attribute keys
+  const competencyMapping: Record<string, string[]> = {
+    // Managing Self → problemSolving, adaptability
+    'problemSolving': ['managingSelf'],
+    'adaptability': ['managingSelf'],
+
+    // Managing Interpersonal → stakeholderManagement, leadership
+    'stakeholderManagement': ['managingInterpersonal'],
+    'leadership': ['managingInterpersonal', 'managingPerformance'],
+
+    // Managing Organisational → technicalExpertise
+    'technicalExpertise': ['managingOrganisational'],
+
+    // Managing Performance → customerFocus
+    'customerFocus': ['managingPerformance'],
+  };
+
+  // Extract scores for each mapped attribute
+  for (const [attrKey, csvColumns] of Object.entries(competencyMapping)) {
+    const ratings: number[] = [];
+
+    for (const colKey of csvColumns) {
+      const colName = keyColumns[colKey];
+      if (colName && row[colName]) {
+        const parsed = parseCompetencyRating(row[colName]);
+        if (parsed !== null) {
+          ratings.push(parsed);
+        }
+      }
+    }
+
+    // Average the ratings if multiple sources
+    if (ratings.length > 0) {
+      scores[attrKey] = Math.round(ratings.reduce((a, b) => a + b, 0) / ratings.length);
+    }
+  }
+
+  // Also check for attributes/potential column which may have multiple indicators
+  if (keyColumns.attributes && row[keyColumns.attributes]) {
+    const attrRating = parseCompetencyRating(row[keyColumns.attributes]);
+    if (attrRating !== null) {
+      // Apply to all attributes as a baseline if not already set
+      for (const key of Object.keys(competencyMapping)) {
+        if (scores[key] === undefined) {
+          scores[key] = attrRating;
+        }
+      }
+    }
+  }
+
+  return scores;
+}
+
+/**
+ * Calculate cultural fit score from CSV data
+ * Uses talent category, potential, and performance ratings
+ */
+function calculateCulturalFitFromCSV(
+  row: Record<string, string> | undefined,
+  keyColumns: Record<string, string | null>,
+  baseScore: number
+): number {
+  if (!row) {
+    // Fallback to 80% of base score for candidates without CSV data
+    return Math.round(baseScore * 0.8);
+  }
+
+  const indicators: number[] = [];
+
+  // Talent Category - strong indicator of cultural fit and potential
+  if (keyColumns.talentCategory && row[keyColumns.talentCategory]) {
+    const talentRating = parseCompetencyRating(row[keyColumns.talentCategory]);
+    if (talentRating !== null) {
+      indicators.push(talentRating);
+    }
+  }
+
+  // Potential rating
+  if (keyColumns.potential && row[keyColumns.potential]) {
+    const potentialRating = parseCompetencyRating(row[keyColumns.potential]);
+    if (potentialRating !== null) {
+      indicators.push(potentialRating);
+    }
+  }
+
+  // Performance rating - indicates cultural alignment with performance expectations
+  if (keyColumns.performance && row[keyColumns.performance]) {
+    const perfRating = parseCompetencyRating(row[keyColumns.performance]);
+    if (perfRating !== null) {
+      indicators.push(perfRating);
+    }
+  }
+
+  // Attributes of potential (ACED or similar)
+  if (keyColumns.attributes && row[keyColumns.attributes]) {
+    const attrRating = parseCompetencyRating(row[keyColumns.attributes]);
+    if (attrRating !== null) {
+      indicators.push(attrRating);
+    }
+  }
+
+  // If we have actual data, average it; otherwise use fallback
+  if (indicators.length > 0) {
+    return Math.round(indicators.reduce((a, b) => a + b, 0) / indicators.length);
+  }
+
+  // Fallback to derived score
+  return Math.round(baseScore * 0.8);
+}
+
+/**
+ * Keyword patterns for skill/tool matching
+ * Maps tool categories to keywords that indicate proficiency
+ */
+const SKILL_MATCHERS: Record<string, string[]> = {
+  // Technical/IT skills
+  'technical': ['it', 'software', 'technology', 'systems', 'digital', 'computer', 'engineering', 'technical', 'data', 'analytics'],
+  'programming': ['programming', 'coding', 'developer', 'software', 'java', 'python', 'javascript', 'sql', 'database'],
+  'data': ['data', 'analytics', 'analysis', 'reporting', 'business intelligence', 'bi', 'excel', 'tableau', 'power bi'],
+
+  // Business skills
+  'financial': ['financial', 'finance', 'accounting', 'budget', 'p&l', 'revenue', 'cost', 'audit', 'controller', 'cfo'],
+  'strategic': ['strategy', 'strategic', 'planning', 'business development', 'transformation', 'consulting'],
+  'commercial': ['sales', 'commercial', 'business development', 'revenue', 'market', 'customer', 'client'],
+
+  // Leadership/Management skills
+  'leadership': ['leadership', 'lead', 'managing', 'director', 'head', 'chief', 'executive', 'vp', 'manager'],
+  'project': ['project management', 'program', 'pmp', 'agile', 'scrum', 'delivery', 'implementation'],
+  'change': ['change management', 'transformation', 'organizational change', 'restructuring'],
+
+  // Operations skills
+  'operations': ['operations', 'ops', 'supply chain', 'logistics', 'warehouse', 'distribution', 'process'],
+  'quality': ['quality', 'qa', 'compliance', 'audit', 'iso', 'six sigma', 'lean', 'continuous improvement'],
+
+  // Communication skills
+  'communication': ['communication', 'presentation', 'stakeholder', 'interpersonal', 'negotiation', 'influencing'],
+  'languages': ['bilingual', 'multilingual', 'english', 'spanish', 'french', 'german', 'mandarin', 'language'],
+};
+
+/**
+ * Match candidate skills/education against tool categories
+ * Returns achievement likelihood for each tool
+ */
+function matchSkillsToTools(
+  row: Record<string, string> | undefined,
+  keyColumns: Record<string, string | null>,
+  toolCategory: string,
+  toolName: string
+): number {
+  if (!row) return 0;
+
+  // Gather all relevant candidate text
+  const candidateText: string[] = [];
+
+  // Education is key indicator of skill proficiency
+  if (keyColumns.education && row[keyColumns.education]) {
+    candidateText.push(row[keyColumns.education].toLowerCase());
+  }
+
+  // Strengths indicate skill areas
+  if (keyColumns.strengths && row[keyColumns.strengths]) {
+    candidateText.push(row[keyColumns.strengths].toLowerCase());
+  }
+  if (keyColumns.strengthsWeaknesses && row[keyColumns.strengthsWeaknesses]) {
+    candidateText.push(row[keyColumns.strengthsWeaknesses].toLowerCase());
+  }
+
+  // Job title and role indicate skill areas
+  if (keyColumns.job && row[keyColumns.job]) {
+    candidateText.push(row[keyColumns.job].toLowerCase());
+  }
+
+  // Critical experience
+  if (keyColumns.criticalExp && row[keyColumns.criticalExp]) {
+    candidateText.push(row[keyColumns.criticalExp].toLowerCase());
+  }
+
+  // Career aspirations may indicate skill interests
+  if (keyColumns.careerAspirations && row[keyColumns.careerAspirations]) {
+    candidateText.push(row[keyColumns.careerAspirations].toLowerCase());
+  }
+
+  const fullText = candidateText.join(' ');
+  if (!fullText) return 0;
+
+  let matchScore = 0;
+  const toolCatLower = toolCategory.toLowerCase();
+  const toolNameLower = toolName.toLowerCase();
+
+  // Check each skill category for relevance
+  for (const [category, keywords] of Object.entries(SKILL_MATCHERS)) {
+    // Check if this skill category is relevant to the tool
+    const isRelevant = toolCatLower.includes(category) ||
+                       toolNameLower.includes(category) ||
+                       category.includes(toolCatLower.split(' ')[0]) ||
+                       category.includes(toolNameLower.split(' ')[0]);
+
+    if (isRelevant) {
+      for (const keyword of keywords) {
+        if (fullText.includes(keyword)) {
+          matchScore += 1;
+        }
+      }
+    }
+  }
+
+  // Direct match on tool name
+  const toolKeywords = toolName.toLowerCase().split(/[\s\-\/]+/).filter(w => w.length > 2);
+  for (const keyword of toolKeywords) {
+    if (fullText.includes(keyword)) {
+      matchScore += 2;
+    }
+  }
+
+  return matchScore;
+}
+
 const EXPERIENCE_MATCHERS: Record<string, string[]> = {
   // Leadership patterns
   'leadership': ['md', 'managing director', 'ceo', 'coo', 'cfo', 'cto', 'chief', 'president', 'vp', 'vice president', 'svp', 'evp', 'director', 'head of', 'general manager', 'gm', 'c-suite', 'executive'],
@@ -749,10 +1071,19 @@ function buildCandidateProfile(
     ? successProfile.attributeConfig.map(a => a.key)
     : ['problemSolving', 'stakeholderManagement', 'technicalExpertise', 'leadership', 'customerFocus', 'adaptability'];
 
-  // Generate DETERMINISTIC attribute scores based on overall score with predictable variance
+  // INTELLIGENT ATTRIBUTE MATCHING: Extract actual competency scores from CSV data
+  const csvCompetencyScores = extractCompetencyScores(rowData, keyColumns || {});
+
+  // Generate attribute scores using CSV data with fallback to deterministic variance
   const competencyStats: CompetencyStats = {};
   attrKeys.forEach((key, index) => {
-    competencyStats[key] = deterministicVariance(baseScore, index, attrKeys.length);
+    // Use actual CSV competency score if available, otherwise use deterministic variance
+    if (csvCompetencyScores[key] !== undefined) {
+      competencyStats[key] = csvCompetencyScores[key];
+    } else {
+      // Fallback: use deterministic variance based on AI's overall score
+      competencyStats[key] = deterministicVariance(baseScore, index, attrKeys.length);
+    }
   });
 
   // Extract candidate text for experience matching
@@ -782,19 +1113,29 @@ function buildCandidateProfile(
     };
   });
 
-  // Mark tools as achieved DETERMINISTICALLY based on score threshold and position
-  // FIXED formula: ensures all tools are potentially achievable
+  // INTELLIGENT SKILL/TOOL MATCHING: Match tools based on candidate's actual skills/education
+  // Uses keyword matching against CSV data with fallback to score threshold
   let toolIndex = 0;
   const totalTools = successProfile.toolbox.reduce((sum, cat) => sum + cat.tools.length, 0);
   const toolbox: ToolCategory[] = successProfile.toolbox.map(cat => ({
     category: cat.category,
     tools: cat.tools.map(tool => {
-      // Fixed threshold calculation - now first tool requires ~90, last requires ~40
+      // Calculate skill match score from actual candidate data
+      const skillMatchScore = matchSkillsToTools(rowData, keyColumns || {}, cat.category, tool.name);
+
+      // Determine threshold based on position (first tools are easier)
       const achievementThreshold = 90 - (toolIndex / Math.max(1, totalTools)) * 50;
       toolIndex++;
+
+      // Use intelligent matching if we have CSV data and get any match
+      // Otherwise fall back to score-based threshold
+      const achieved = rowData && skillMatchScore > 0
+        ? skillMatchScore >= 2 // Need at least 2 keyword matches for intelligent match
+        : baseScore >= achievementThreshold;
+
       return {
         ...tool,
-        achieved: baseScore >= achievementThreshold,
+        achieved,
       };
     }),
   }));
@@ -821,13 +1162,15 @@ function buildCandidateProfile(
     motivations: [], // Will be empty for CSV uploads
     painPoints: [],
     weekInLife: [],
-    // Initialize cultural fit based on AI's overall assessment
-    // This gives CSV candidates a reasonable cultural baseline
+    // INTELLIGENT CULTURAL FIT: Use actual CSV data (talent category, potential, performance)
+    // with fallback to derived score for candidates without detailed CSV data
     culturalFitAssessment: {
-      score: Math.round(baseScore * 0.8), // Derive from overall score (80% of base)
+      score: calculateCulturalFitFromCSV(rowData, keyColumns || {}, baseScore),
       assessedAt: new Date().toISOString(),
-      assessedBy: 'AI Assessment',
-      notes: 'Auto-assessed based on overall candidate profile',
+      assessedBy: rowData ? 'CSV Data Analysis' : 'AI Assessment',
+      notes: rowData
+        ? 'Assessed based on talent category, potential, and performance ratings'
+        : 'Auto-assessed based on overall candidate profile',
     },
     matchScore: {
       overall: 0, // Will be calculated below
