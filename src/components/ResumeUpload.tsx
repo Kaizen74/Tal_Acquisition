@@ -15,8 +15,8 @@ import {
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { parseMultipleResumes } from '../utils/parseResume';
-import { parseMultipleResumesWithClaude } from '../utils/claudeResumeParser';
-import { parseCandidatesCSVWithClaude, downloadCandidatesCSVTemplate } from '../utils/claudeCandidatesCSVParser';
+import { parseMultipleResumesWithSemanticMatching } from '../utils/claudeResumeParser';
+import { parseCandidatesCSVWithSemanticMatching, downloadCandidatesCSVTemplate } from '../utils/claudeCandidatesCSVParser';
 import { ApiKeyConfig } from './ApiKeyConfig';
 import type { CandidateProfile, SuccessProfile } from '../types';
 
@@ -57,10 +57,13 @@ export function ResumeUpload({
       requiredExperiences: successProfile.requiredExperiences,
       toolbox: successProfile.toolbox,
       attributeConfig: successProfile.attributeConfig,
+      motivations: successProfile.motivations,
+      painPoints: successProfile.painPoints,
     };
 
+    // Use semantic matching when API key is available for deep language analysis
     const results = claudeApiKey
-      ? await parseMultipleResumesWithClaude(files, claudeApiKey, profileContext)
+      ? await parseMultipleResumesWithSemanticMatching(files, claudeApiKey, profileContext)
       : await parseMultipleResumes(files, profileContext);
 
     return results;
@@ -79,6 +82,8 @@ export function ResumeUpload({
       requiredExperiences: successProfile.requiredExperiences,
       toolbox: successProfile.toolbox,
       attributeConfig: successProfile.attributeConfig,
+      motivations: successProfile.motivations,
+      painPoints: successProfile.painPoints,
     };
 
     // Progress callback for large datasets
@@ -86,7 +91,8 @@ export function ResumeUpload({
       setProcessingProgress({ processed, total, status });
     };
 
-    const result = await parseCandidatesCSVWithClaude(file, claudeApiKey, profileContext, onProgress);
+    // Use semantic matching for deep language analysis (distinguishes functional role vs industry)
+    const result = await parseCandidatesCSVWithSemanticMatching(file, claudeApiKey, profileContext, onProgress);
     setProcessingProgress(null);
     return result;
   }, [successProfile, claudeApiKey]);
