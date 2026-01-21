@@ -642,7 +642,20 @@ ${profile.skillDescriptors.map(s => `      {"name": "${s.name}", "achieved": <tr
     "overall": <0-100 closeness score>,
     "motivationAlignment": <0-100>,
     "painPointUnderstanding": <0-100>,
-    "reasoning": "<SPECIFIC assessment: Start with candidate name. Mention their current role and key background. State 2-3 specific strengths that match the ${profile.roleTitle} requirements. State 1-2 gaps or concerns. End with a clear recommendation (Strong/Good/Moderate/Weak fit). Example format: '[Name], currently [Role], brings [specific strength 1] and [specific strength 2]. Their experience in [area] aligns well with the [requirement]. However, [gap/concern]. Overall: [Strong/Good/Moderate/Weak] fit for ${profile.roleTitle}.'>"
+    "reasoning": "<DETAILED assessment (3-5 sentences):
+
+    STRUCTURE YOUR RESPONSE AS FOLLOWS:
+    1. OPENING: '[Candidate Name], currently serving as [Current Role], brings [X] years of [domain] experience.'
+
+    2. KEY STRENGTHS (reference specific profile requirements): 'Their background demonstrates strong alignment with the ${profile.roleTitle} requirements, particularly in [cite 2-3 specific requirements from the profile like: ${profile.attributeDescriptors.slice(0, 3).map(a => a.label).join(', ')}]. Evidence includes [specific examples from their background].'
+
+    3. EXPERIENCE ALIGNMENT: 'Regarding required experiences [${profile.experienceDescriptors.slice(0, 2).map(e => e.name).join(', ')}], the candidate [has demonstrated/lacks] relevant functional expertise through [specific evidence].'
+
+    4. GAPS/CONCERNS: 'Areas requiring development include [specific gap] which may impact [specific requirement from profile].'
+
+    5. RECOMMENDATION: 'Overall Assessment: [Strong/Good/Moderate/Weak] fit for the ${profile.roleTitle} role. [One sentence explaining why].'
+
+    IMPORTANT: Reference actual keywords from the success profile (role: ${profile.roleTitle}, level: ${profile.roleLevel}). Be specific about which requirements are met vs gaps.>"
   }
 }
 

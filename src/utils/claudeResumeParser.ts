@@ -174,7 +174,12 @@ ${attributeKeysJson}
       "evidence": "<quote or describe specific evidence from resume>"
     }
   ],
-  "summary": "<SPECIFIC assessment: Start with candidate name and current role. State 2-3 specific strengths from their background that match requirements. Mention 1-2 gaps. End with fit level (Strong/Good/Moderate/Weak). Example: 'John Smith, VP Operations, brings 15 years of logistics experience and proven P&L accountability. Strong strategic leadership and team management. Gap: Limited aviation-specific experience. Overall: Good fit.'>"
+  "summary": "<DETAILED assessment (3-5 sentences) that references the ${successProfile.role.title} requirements:
+
+    FORMAT:
+    '[Name], currently [Role], brings [X] years of experience in [domain]. Their background shows strong alignment with the ${successProfile.role.title} role requirements, particularly demonstrating [cite specific required experiences from the list above that they match]. Key strengths include [2-3 specific competencies from their resume that align with the attribute categories]. However, gaps exist in [cite specific required experiences/skills from the list above that are NOT matched]. Overall Assessment: [Strong/Good/Moderate/Weak] fit for ${successProfile.role.title} because [one sentence explanation referencing profile requirements].'
+
+    IMPORTANT: Reference actual experience names and skill names from the lists above. Be specific about which requirements are met vs which are gaps.>"
 }
 
 REQUIREMENTS:
