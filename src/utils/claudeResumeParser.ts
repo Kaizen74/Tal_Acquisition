@@ -445,20 +445,21 @@ export async function parseResumeWithSemanticMatching(
   const basicInfoPrompt = `Extract from this resume:
 1. Full name
 2. Current/most recent job title
-3. Total years of professional experience (IMPORTANT: Calculate from the EARLIEST employment start date to the current year 2026)
+3. Total years of professional experience
 
-CRITICAL: For years of experience calculation:
-- Find the EARLIEST employment date mentioned anywhere in the resume
-- Calculate: Current Year (2026) - Earliest Employment Year = Total Years
-- Example: If earliest job started in 2006, then years = 2026 - 2006 = 20 years
-- Do NOT just count years at current company
-- Include ALL professional experience from career start
+CRITICAL INSTRUCTION FOR YEARS CALCULATION:
+1. Search the ENTIRE resume for ALL employment dates (look for years like 2006, 2010, 2015, etc.)
+2. Find the EARLIEST year mentioned in work experience sections
+3. Calculate: 2026 (current year) minus that earliest year
+4. Example: "Nov 2006 - Nov 2008" means career started in 2006, so years = 2026 - 2006 = 20
+
+IMPORTANT: The earliest job is often at the BOTTOM of the resume. Make sure to scan the entire document.
 
 Resume:
-${resumeText.substring(0, 8000)}
+${resumeText.substring(0, 12000)}
 
 Respond with ONLY valid JSON:
-{"name": "Full Name", "currentRole": "Job Title", "yearsExperience": <number - calculated from earliest employment to 2026>}`;
+{"name": "Full Name", "currentRole": "Job Title", "yearsExperience": <number>}`;
 
   const basicInfoResponse = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -516,6 +517,25 @@ Respond with ONLY valid JSON:
       basicInfo = JSON.parse(cleanedBasicInfo.substring(startIndex, endIndex));
     } else {
       basicInfo = { name: file.name.replace('.pdf', ''), currentRole: '', yearsExperience: 0 };
+    }
+  }
+
+  // Fallback: Calculate years from resume text if Claude's response seems wrong
+  // This handles cases where Claude miscalculates or returns incorrect years
+  const yearMatches = resumeText.match(/\b(19\d{2}|20[0-2]\d)\b/g);
+  if (yearMatches && yearMatches.length > 0) {
+    const years = yearMatches.map(y => parseInt(y, 10)).filter(y => y >= 1970 && y <= 2026);
+    if (years.length > 0) {
+      const earliestYear = Math.min(...years);
+      const currentYear = 2026;
+      const calculatedYears = currentYear - earliestYear;
+      // Only override if calculated years is significantly different (more than 2 years)
+      // and if the calculated value is larger (Claude may have underestimated)
+      if (calculatedYears > 0 && calculatedYears <= 50) {
+        if (!basicInfo.yearsExperience || calculatedYears > basicInfo.yearsExperience + 2) {
+          basicInfo.yearsExperience = calculatedYears;
+        }
+      }
     }
   }
 

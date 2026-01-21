@@ -17,6 +17,7 @@ import {
   MessageSquare,
   Star,
   BarChart3,
+  FileText,
 } from 'lucide-react';
 import type { CandidateProfile } from '../types';
 import { cn } from '../utils/cn';
@@ -345,12 +346,32 @@ export function CandidateDetailModal({ candidate, onClose }: CandidateDetailModa
                 </section>
               )}
 
-              {/* Cultural Fit Assessment */}
+              {/* Overall Qualitative Assessment - Separate from Cultural Fit */}
+              {candidate.culturalFitAssessment?.notes && (
+                <section className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-5 border border-indigo-100">
+                  <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900 mb-4">
+                    <FileText className="w-5 h-5 text-indigo-600" />
+                    Overall Qualitative Assessment
+                  </h3>
+                  <div className="bg-white p-4 rounded-lg border border-indigo-100 shadow-sm">
+                    <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                      {candidate.culturalFitAssessment.notes}
+                    </p>
+                  </div>
+                  {candidate.culturalFitAssessment.assessedAt && (
+                    <p className="text-xs text-gray-500 mt-3">
+                      Generated: {new Date(candidate.culturalFitAssessment.assessedAt).toLocaleDateString()}
+                    </p>
+                  )}
+                </section>
+              )}
+
+              {/* Cultural Fit Assessment - Score Only */}
               {candidate.culturalFitAssessment && (
                 <section className="bg-gray-50 rounded-xl p-5">
                   <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900 mb-4">
                     <TrendingUp className="w-5 h-5 text-indigo-600" />
-                    Cultural Fit Assessment
+                    Cultural Fit Score
                   </h3>
                   <div className="space-y-3">
                     <div className="flex items-center justify-between p-3 bg-white rounded-lg border">
@@ -365,11 +386,6 @@ export function CandidateDetailModal({ candidate, onClose }: CandidateDetailModa
                     {candidate.culturalFitAssessment.assessedAt && (
                       <p className="text-sm text-gray-500">
                         Assessed: {new Date(candidate.culturalFitAssessment.assessedAt).toLocaleDateString()}
-                      </p>
-                    )}
-                    {candidate.culturalFitAssessment.notes && (
-                      <p className="text-sm text-gray-600 bg-white p-3 rounded-lg border">
-                        {candidate.culturalFitAssessment.notes}
                       </p>
                     )}
                   </div>

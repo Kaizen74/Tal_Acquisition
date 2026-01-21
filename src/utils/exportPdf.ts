@@ -442,6 +442,37 @@ export function exportResultsToPdf(options: ExportOptions): void {
 
     yPos = doc.lastAutoTable.finalY + 6;
 
+    // Qualitative Assessment (if any)
+    if (candidate.culturalFitAssessment?.notes && candidate.culturalFitAssessment.notes.trim()) {
+      // Check if we need a new page for assessment
+      if (yPos > 230) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      doc.setFillColor(238, 242, 255); // light indigo background
+      const assessmentLines = doc.splitTextToSize(candidate.culturalFitAssessment.notes, pageWidth - 60);
+      const assessmentBoxHeight = Math.max(assessmentLines.length * 4 + 12, 20);
+
+      doc.roundedRect(40, yPos, pageWidth - 54, assessmentBoxHeight, 2, 2, 'F');
+      doc.setDrawColor(165, 180, 252); // indigo border
+      doc.setLineWidth(0.3);
+      doc.roundedRect(40, yPos, pageWidth - 54, assessmentBoxHeight, 2, 2, 'S');
+
+      yPos += 6;
+      doc.setTextColor(79, 70, 229); // indigo text
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Overall Qualitative Assessment:', 44, yPos);
+      yPos += 5;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...COLORS.navy);
+      doc.setFontSize(8);
+      doc.text(assessmentLines, 44, yPos);
+      yPos += assessmentLines.length * 4 + 5;
+    }
+
     // Interview Comments (if any)
     if (candidate.interviewComments && candidate.interviewComments.trim()) {
       // Check if we need a new page for comments
