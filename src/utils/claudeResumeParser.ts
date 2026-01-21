@@ -174,7 +174,7 @@ ${attributeKeysJson}
       "evidence": "<quote or describe specific evidence from resume>"
     }
   ],
-  "summary": "Brief 1-2 sentence summary of candidate fit"
+  "summary": "<SPECIFIC assessment: Start with candidate name and current role. State 2-3 specific strengths from their background that match requirements. Mention 1-2 gaps. End with fit level (Strong/Good/Moderate/Weak). Example: 'John Smith, VP Operations, brings 15 years of logistics experience and proven P&L accountability. Strong strategic leadership and team management. Gap: Limited aviation-specific experience. Overall: Good fit.'>"
 }
 
 REQUIREMENTS:

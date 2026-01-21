@@ -642,7 +642,7 @@ ${profile.skillDescriptors.map(s => `      {"name": "${s.name}", "achieved": <tr
     "overall": <0-100 closeness score>,
     "motivationAlignment": <0-100>,
     "painPointUnderstanding": <0-100>,
-    "reasoning": "<how candidate's values/style align with role culture>"
+    "reasoning": "<SPECIFIC assessment: Start with candidate name. Mention their current role and key background. State 2-3 specific strengths that match the ${profile.roleTitle} requirements. State 1-2 gaps or concerns. End with a clear recommendation (Strong/Good/Moderate/Weak fit). Example format: '[Name], currently [Role], brings [specific strength 1] and [specific strength 2]. Their experience in [area] aligns well with the [requirement]. However, [gap/concern]. Overall: [Strong/Good/Moderate/Weak] fit for ${profile.roleTitle}.'>"
   }
 }
 
