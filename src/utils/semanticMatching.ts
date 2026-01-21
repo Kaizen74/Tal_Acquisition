@@ -50,10 +50,11 @@ export interface ProfileDescriptors {
     values: string[]; // Inferred from role description
   };
 
-  // Industry preferences (soft bonus, not hard requirement)
-  industryPreferences: {
-    preferred: string[]; // Preferred industries extracted from JD
-    hasPreferences: boolean; // Whether JD indicates industry preferences
+  // Soft preferences extracted from JD (bonus scoring, not hard requirements)
+  // These are ANY preferences indicated with terms like "preferred", "ideally", etc.
+  softPreferences: {
+    hasPreferences: boolean; // Whether JD contains preference language
+    preferredCriteria: string[]; // Extracted sentences/phrases containing preferences
   };
 }
 
@@ -168,21 +169,18 @@ export function extractProfileDescriptors(profile: SuccessProfile): ProfileDescr
     values: extractValuesFromRole(profile.role.description || '', profile.role.title),
   };
 
-  // Combine all text sources for comprehensive industry preference extraction
-  const allProfileText = [
+  // Combine all text sources for comprehensive preference extraction
+  const allProfileTextSources = [
     profile.role.description || '',
-    profile.requiredExperiences.map(e => `${e.name} ${e.description}`).join(' '),
-    profile.motivations?.join(' ') || '',
-    profile.painPoints?.join(' ') || '',
-    profile.academicBackground?.preferredFields?.join(' ') || '',
-    profile.academicBackground?.certifications?.join(' ') || '',
-  ].join(' ');
+    ...profile.requiredExperiences.map(e => `${e.name}: ${e.description}`),
+    ...(profile.motivations || []),
+    ...(profile.painPoints || []),
+    ...(profile.academicBackground?.preferredFields || []),
+    ...(profile.academicBackground?.certifications || []),
+  ];
 
-  // Extract industry preferences from all success profile text
-  const industryPreferences = extractIndustryPreferences(
-    profile.role.description || '',
-    allProfileText
-  );
+  // Extract soft preferences (any preferences indicated with "preferred", "ideally", etc.)
+  const softPreferences = extractSoftPreferences(allProfileTextSources);
 
   return {
     roleTitle: profile.role.title,
@@ -192,60 +190,90 @@ export function extractProfileDescriptors(profile: SuccessProfile): ProfileDescr
     experienceDescriptors,
     skillDescriptors,
     culturalDescriptors,
-    industryPreferences,
+    softPreferences,
   };
 }
 
 /**
- * Extract industry preferences from JD/role description
- * Only returns preferences if explicitly indicated (preferred/ideal/background in)
+ * Extract soft preferences from JD/success profile text
+ * Only extracts preferences when explicit preference language is found
+ * (e.g., "preferred", "preferences", "ideally", "ideal candidate", etc.)
+ *
+ * This captures ANY type of preference - skills, certifications, background,
+ * industry experience, education, etc.
  */
-function extractIndustryPreferences(
-  description: string,
-  experienceText: string
-): { preferred: string[]; hasPreferences: boolean } {
-  const combined = `${description} ${experienceText}`.toLowerCase();
-  const preferred: string[] = [];
-
-  // Industry keywords to detect
-  const industries: Record<string, string[]> = {
-    'Aviation': ['aviation', 'airline', 'aircraft', 'aerospace', 'airport'],
-    'Logistics': ['logistics', 'supply chain', 'freight', 'shipping', 'cargo', 'warehousing', 'distribution'],
-    'Manufacturing': ['manufacturing', 'production', 'factory', 'industrial'],
-    'Technology': ['technology', 'tech', 'software', 'IT', 'digital'],
-    'Healthcare': ['healthcare', 'medical', 'pharmaceutical', 'hospital'],
-    'Financial Services': ['banking', 'finance', 'insurance', 'fintech', 'investment'],
-    'Retail': ['retail', 'consumer goods', 'e-commerce', 'FMCG'],
-    'Energy': ['energy', 'oil', 'gas', 'utilities', 'renewable'],
-    'Consulting': ['consulting', 'advisory', 'professional services'],
-    'Telecommunications': ['telecom', 'telecommunications', 'mobile', 'network'],
-  };
-
-  // Preference indicators - only apply bonus if these phrases are present
+function extractSoftPreferences(
+  textSources: string[]
+): { hasPreferences: boolean; preferredCriteria: string[] } {
+  // Preference indicator terms - only activate when these are found
   const preferenceIndicators = [
-    'prefer', 'preferred', 'ideal', 'ideally', 'background in', 'experience in',
-    'from the', 'industry experience', 'sector experience', 'domain expertise',
-    'exposure to', 'familiarity with', 'knowledge of the'
+    'prefer', 'preferred', 'preference', 'preferences',
+    'ideal', 'ideally', 'ideal candidate', 'ideal candidates',
+    'nice to have', 'nice-to-have', 'bonus', 'plus',
+    'advantageous', 'advantage', 'desirable', 'desired',
+    'would be beneficial', 'would be an asset', 'an asset',
+    'strongly desired', 'highly desired', 'highly preferred'
   ];
 
-  // Check if there are explicit preference indicators
-  const hasPreferenceLanguage = preferenceIndicators.some(indicator =>
-    combined.includes(indicator)
-  );
+  const preferredCriteria: string[] = [];
 
-  // Extract industries mentioned in the JD
-  for (const [industryName, keywords] of Object.entries(industries)) {
-    if (keywords.some(kw => combined.includes(kw))) {
-      // Only add as preference if there's preference language or it's in experience requirements
-      if (hasPreferenceLanguage || experienceText.toLowerCase().includes(keywords[0])) {
-        preferred.push(industryName);
+  // Process each text source
+  for (const text of textSources) {
+    if (!text || text.trim().length === 0) continue;
+
+    // Split into sentences (handle multiple delimiters)
+    const sentences = text.split(/[.!?\n;]/).map(s => s.trim()).filter(s => s.length > 10);
+
+    for (const sentence of sentences) {
+      const sentenceLower = sentence.toLowerCase();
+
+      // Check if this sentence contains preference language
+      const hasPreferenceLanguage = preferenceIndicators.some(indicator =>
+        sentenceLower.includes(indicator)
+      );
+
+      if (hasPreferenceLanguage) {
+        // Clean up the sentence and add it as a preferred criterion
+        const cleanedSentence = sentence
+          .replace(/^\s*[-•*]\s*/, '') // Remove bullet points
+          .replace(/\s+/g, ' ') // Normalize whitespace
+          .trim();
+
+        if (cleanedSentence.length > 15 && !preferredCriteria.includes(cleanedSentence)) {
+          preferredCriteria.push(cleanedSentence);
+        }
+      }
+    }
+
+    // Also check for preference language in headlines/labels
+    // (e.g., "Preferred qualifications:", "Preferred background:")
+    const headlinePatterns = [
+      /preferred\s+(?:qualifications?|skills?|experience|background|education|certifications?|requirements?)[:\s]*/gi,
+      /nice[- ]to[- ]have[:\s]*/gi,
+      /bonus[:\s]*/gi,
+      /desirable[:\s]*/gi,
+    ];
+
+    for (const pattern of headlinePatterns) {
+      if (pattern.test(text)) {
+        // If we find a "Preferred X:" section, capture the whole text as context
+        const textLower = text.toLowerCase();
+        if (!preferredCriteria.some(c => c.toLowerCase() === textLower) && text.length > 15) {
+          // Don't add duplicate or very similar entries
+          const isDuplicate = preferredCriteria.some(existing =>
+            existing.toLowerCase().includes(textLower) || textLower.includes(existing.toLowerCase())
+          );
+          if (!isDuplicate) {
+            preferredCriteria.push(text.trim());
+          }
+        }
       }
     }
   }
 
   return {
-    preferred,
-    hasPreferences: preferred.length > 0 && hasPreferenceLanguage,
+    hasPreferences: preferredCriteria.length > 0,
+    preferredCriteria,
   };
 }
 
@@ -701,10 +729,13 @@ ${profile.skillDescriptors.map(s => `- ${s.name} (${s.category}): ${s.context}`)
 Motivations: ${profile.culturalDescriptors.motivations.join(', ') || 'Not specified'}
 Pain Points to Address: ${profile.culturalDescriptors.painPoints.join(', ') || 'Not specified'}
 Organizational Values: ${profile.culturalDescriptors.values.join(', ')}
-${profile.industryPreferences.hasPreferences ? `
-### Industry Preferences (BONUS - NOT A HARD REQUIREMENT):
-Preferred Industries: ${profile.industryPreferences.preferred.join(', ')}
-NOTE: Industry background is a SOFT PREFERENCE for bonus consideration. Candidates from these industries get a small bonus (+5-10 points) to their overall fit, but lack of industry background should NOT disqualify them. This is separate from functional experience requirements.
+${profile.softPreferences.hasPreferences ? `
+### SOFT PREFERENCES (BONUS SCORING - NOT HARD REQUIREMENTS):
+The following preferences were explicitly indicated in the success profile/JD. Candidates who align with these preferences should receive bonus consideration (+5-10 points), but lack of alignment should NOT disqualify them:
+
+${profile.softPreferences.preferredCriteria.map((criterion, i) => `${i + 1}. "${criterion}"`).join('\n')}
+
+IMPORTANT: Scan the candidate's resume/CV for evidence of alignment with these specific preferred criteria.
 ` : ''}
 ## Candidate: ${candidate.name}
 Current Role: ${candidate.currentRole}
@@ -778,14 +809,14 @@ ${profile.skillDescriptors.map(s => `      {"name": "${s.name}", "achieved": <tr
     2. KEY STRENGTHS (reference specific profile requirements): 'Their background demonstrates strong alignment with the ${profile.roleTitle} requirements, particularly in [cite 2-3 specific requirements from the profile like: ${profile.attributeDescriptors.slice(0, 3).map(a => a.label).join(', ')}]. Evidence includes [specific examples from their background].'
 
     3. EXPERIENCE ALIGNMENT: 'Regarding required experiences [${profile.experienceDescriptors.slice(0, 2).map(e => e.name).join(', ')}], the candidate [has demonstrated/lacks] relevant functional expertise through [specific evidence].'
-${profile.industryPreferences.hasPreferences ? `
-    4. INDUSTRY ALIGNMENT: 'Regarding preferred industry background (${profile.industryPreferences.preferred.join(', ')}), the candidate [has/does not have] relevant industry exposure from [their experience at X company/sector]. [If matched: This provides valuable context for the role. / If not matched: However, their transferable skills from [their industry] remain applicable.]'
+${profile.softPreferences.hasPreferences ? `
+    4. PREFERENCE ALIGNMENT: 'Regarding the soft preferences indicated in the profile, the candidate [aligns/partially aligns/does not align] with: [list which preferred criteria from the profile they match, with evidence from their resume]. [If aligned: This adds bonus consideration. / If not aligned: However, this does not disqualify them as these are soft preferences.]'
 ` : ''}
-    ${profile.industryPreferences.hasPreferences ? '5' : '4'}. GAPS/CONCERNS: 'Areas requiring development include [specific gap] which may impact [specific requirement from profile].'
+    ${profile.softPreferences.hasPreferences ? '5' : '4'}. GAPS/CONCERNS: 'Areas requiring development include [specific gap] which may impact [specific requirement from profile].'
 
-    ${profile.industryPreferences.hasPreferences ? '6' : '5'}. RECOMMENDATION: 'Overall Assessment: [Strong/Good/Moderate/Weak] fit for the ${profile.roleTitle} role. [One sentence explaining why].'
+    ${profile.softPreferences.hasPreferences ? '6' : '5'}. RECOMMENDATION: 'Overall Assessment: [Strong/Good/Moderate/Weak] fit for the ${profile.roleTitle} role. [One sentence explaining why].'
 
-    IMPORTANT: Reference actual keywords from the success profile (role: ${profile.roleTitle}, level: ${profile.roleLevel}). Be specific about which requirements are met vs gaps.${profile.industryPreferences.hasPreferences ? ' Include industry alignment assessment.' : ''}>"
+    IMPORTANT: Reference actual keywords from the success profile (role: ${profile.roleTitle}, level: ${profile.roleLevel}). Be specific about which requirements are met vs gaps.${profile.softPreferences.hasPreferences ? ' Include assessment of alignment with soft preferences.' : ''}>"
   }
 }
 
