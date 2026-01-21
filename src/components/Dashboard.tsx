@@ -294,7 +294,7 @@ export function Dashboard() {
     setUploadTab('profile');
   };
 
-  // Export results to PDF
+  // Export results to PDF - exports ALL candidates, not just selected ones
   const handleExportPdf = () => {
     if (candidates.length === 0) {
       alert('No candidates to export. Please upload candidate resumes first.');
@@ -304,7 +304,7 @@ export function Dashboard() {
       profile,
       candidates,
       weights: matchWeights,
-      selectedIndices: Array.from(selectedCandidates),
+      // Don't pass selectedIndices - export ALL candidates
     });
   };
 
