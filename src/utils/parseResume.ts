@@ -160,13 +160,16 @@ function extractYearsExperience(text: string): number {
     }
   }
 
-  // Estimate from work history dates
+  // Estimate from work history dates - calculate from EARLIEST employment to CURRENT YEAR
   const yearMatches = text.match(/20\d{2}|19\d{2}/g);
-  if (yearMatches && yearMatches.length >= 2) {
+  if (yearMatches && yearMatches.length >= 1) {
     const years = yearMatches.map(y => parseInt(y, 10));
     const minYear = Math.min(...years);
-    const maxYear = Math.max(...years);
-    return Math.min(maxYear - minYear, 30);
+    const currentYear = new Date().getFullYear(); // Use actual current year (2026)
+    // Calculate from earliest job to current year
+    const calculatedYears = currentYear - minYear;
+    // Cap at reasonable maximum (50 years) and ensure positive
+    return Math.min(Math.max(calculatedYears, 0), 50);
   }
 
   return 0;

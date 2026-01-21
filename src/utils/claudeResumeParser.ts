@@ -146,11 +146,17 @@ ${attributesList}
 - If a resume says "led initiative to improve processes" → Process Improvement = achieved
 - If a resume says "partner with business leaders" → Stakeholder Engagement/Management = achieved
 
+### For YEARS OF EXPERIENCE - Calculate TOTAL career span:
+- Find the EARLIEST employment start date in the resume (first professional job)
+- Calculate: Current Year (2026) - Earliest Employment Year = Total Years
+- Example: If career started in 2006, years = 2026 - 2006 = 20 years
+- Include ALL professional experience, not just current role tenure
+
 Respond with ONLY a valid JSON object (no markdown, no explanation) in this exact format:
 {
   "name": "Full name of the candidate",
   "currentRole": "Current or most recent job title",
-  "yearsExperience": <total years of professional experience>,
+  "yearsExperience": <total years from EARLIEST job to 2026>,
   "attributes": {
 ${attributeKeysJson}
   },
@@ -396,16 +402,24 @@ export async function parseResumeWithSemanticMatching(
   const resumeText = await extractTextFromPDF(file);
 
   // First, use Claude to extract basic info (name, role, years)
+  // Use more text to capture full work history for accurate years calculation
   const basicInfoPrompt = `Extract from this resume:
 1. Full name
 2. Current/most recent job title
-3. Total years of professional experience
+3. Total years of professional experience (IMPORTANT: Calculate from the EARLIEST employment start date to the current year 2026)
+
+CRITICAL: For years of experience calculation:
+- Find the EARLIEST employment date mentioned anywhere in the resume
+- Calculate: Current Year (2026) - Earliest Employment Year = Total Years
+- Example: If earliest job started in 2006, then years = 2026 - 2006 = 20 years
+- Do NOT just count years at current company
+- Include ALL professional experience from career start
 
 Resume:
-${resumeText.substring(0, 3000)}
+${resumeText.substring(0, 8000)}
 
 Respond with ONLY valid JSON:
-{"name": "Full Name", "currentRole": "Job Title", "yearsExperience": number}`;
+{"name": "Full Name", "currentRole": "Job Title", "yearsExperience": <number - calculated from earliest employment to 2026>}`;
 
   const basicInfoResponse = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
