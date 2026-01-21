@@ -168,10 +168,20 @@ export function extractProfileDescriptors(profile: SuccessProfile): ProfileDescr
     values: extractValuesFromRole(profile.role.description || '', profile.role.title),
   };
 
-  // Extract industry preferences from JD and required experiences
+  // Combine all text sources for comprehensive industry preference extraction
+  const allProfileText = [
+    profile.role.description || '',
+    profile.requiredExperiences.map(e => `${e.name} ${e.description}`).join(' '),
+    profile.motivations?.join(' ') || '',
+    profile.painPoints?.join(' ') || '',
+    profile.academicBackground?.preferredFields?.join(' ') || '',
+    profile.academicBackground?.certifications?.join(' ') || '',
+  ].join(' ');
+
+  // Extract industry preferences from all success profile text
   const industryPreferences = extractIndustryPreferences(
     profile.role.description || '',
-    profile.requiredExperiences.map(e => `${e.name} ${e.description}`).join(' ')
+    allProfileText
   );
 
   return {
