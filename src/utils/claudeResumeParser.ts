@@ -697,6 +697,7 @@ function buildCandidateProfileFromSemanticResult(
 
 /**
  * Parse multiple resumes with semantic matching
+ * Includes delay between candidates to avoid API rate limiting
  */
 export async function parseMultipleResumesWithSemanticMatching(
   files: File[],
@@ -706,8 +707,14 @@ export async function parseMultipleResumesWithSemanticMatching(
   const candidates: CandidateProfile[] = [];
   const errors: string[] = [];
 
-  for (const file of files) {
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
     try {
+      // Add delay between candidates to avoid rate limiting (skip first)
+      if (i > 0) {
+        await new Promise(r => setTimeout(r, 500)); // 500ms between candidates
+      }
+
       const candidate = await parseResumeWithSemanticMatching(file, apiKey, successProfile);
       candidates.push(candidate);
     } catch (error) {

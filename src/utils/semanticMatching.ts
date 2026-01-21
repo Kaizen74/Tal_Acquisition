@@ -544,42 +544,90 @@ function inferValuesFromText(text: string): string {
 /**
  * Perform semantic matching using Claude AI
  * This is the core function that analyzes "closeness of fit" through deep language analysis
+ * Includes retry logic with exponential backoff for reliability
  */
 export async function performSemanticMatching(
   apiKey: string,
   candidateText: CandidateText,
-  profileDescriptors: ProfileDescriptors
+  profileDescriptors: ProfileDescriptors,
+  maxRetries: number = 3
 ): Promise<SemanticMatchResult> {
   const prompt = buildSemanticMatchingPrompt(candidateText, profileDescriptors);
 
-  const response = await fetch(CLAUDE_API_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: 'claude-3-5-haiku-20241022', // Fast model for batch processing
-      max_tokens: 2048,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(`Semantic matching API error: ${response.status} - ${errorData.error?.message || response.statusText}`);
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      // Exponential backoff delay (skip on first attempt)
+      if (attempt > 0) {
+        const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+        await new Promise(r => setTimeout(r, delay));
+        console.log(`Retry attempt ${attempt + 1} for ${candidateText.name} after ${delay}ms delay`);
+      }
+
+      const response = await fetch(CLAUDE_API_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-3-5-haiku-20241022', // Fast model for batch processing
+          max_tokens: 2048,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      });
+
+      // Handle rate limiting specifically
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('retry-after');
+        const waitTime = retryAfter ? parseInt(retryAfter, 10) * 1000 : Math.pow(2, attempt + 1) * 1000;
+        console.warn(`Rate limited for ${candidateText.name}, waiting ${waitTime}ms`);
+        await new Promise(r => setTimeout(r, waitTime));
+        continue; // Don't count this as an attempt, just retry
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Semantic matching API error: ${response.status} - ${errorData.error?.message || response.statusText}`);
+      }
+
+      const data = await response.json();
+      const content = data.content?.[0]?.text;
+
+      if (!content) {
+        throw new Error('No content in semantic matching response');
+      }
+
+      const result = parseSemanticMatchingResponse(content, profileDescriptors);
+
+      // Validate that we got a proper result (not just defaults)
+      if (result.cultural.reasoning === 'Unable to analyze') {
+        console.warn(`Parse failed for ${candidateText.name}, attempt ${attempt + 1}`);
+        throw new Error('Parsed result contains default values, retrying');
+      }
+
+      return result;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.error(`Semantic matching attempt ${attempt + 1} failed for ${candidateText.name}:`, lastError.message);
+
+      // Don't retry on certain errors
+      if (lastError.message.includes('Invalid API key') ||
+          lastError.message.includes('401') ||
+          lastError.message.includes('403')) {
+        throw lastError;
+      }
+    }
   }
 
-  const data = await response.json();
-  const content = data.content?.[0]?.text;
-
-  if (!content) {
-    throw new Error('No content in semantic matching response');
-  }
-
-  return parseSemanticMatchingResponse(content, profileDescriptors);
+  // All retries exhausted, return default result with descriptive message
+  console.error(`All ${maxRetries} attempts failed for ${candidateText.name}, using default result`);
+  const defaultResult = createDefaultSemanticResult(profileDescriptors);
+  defaultResult.cultural.reasoning = `Analysis could not be completed after ${maxRetries} attempts. Please try re-uploading this resume.`;
+  return defaultResult;
 }
 
 /**
