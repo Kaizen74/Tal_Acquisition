@@ -49,6 +49,12 @@ export interface ProfileDescriptors {
     painPoints: string[];
     values: string[]; // Inferred from role description
   };
+
+  // Industry preferences (soft bonus, not hard requirement)
+  industryPreferences: {
+    preferred: string[]; // Preferred industries extracted from JD
+    hasPreferences: boolean; // Whether JD indicates industry preferences
+  };
 }
 
 /**
@@ -162,6 +168,12 @@ export function extractProfileDescriptors(profile: SuccessProfile): ProfileDescr
     values: extractValuesFromRole(profile.role.description || '', profile.role.title),
   };
 
+  // Extract industry preferences from JD and required experiences
+  const industryPreferences = extractIndustryPreferences(
+    profile.role.description || '',
+    profile.requiredExperiences.map(e => `${e.name} ${e.description}`).join(' ')
+  );
+
   return {
     roleTitle: profile.role.title,
     roleDescription: profile.role.description || '',
@@ -170,6 +182,60 @@ export function extractProfileDescriptors(profile: SuccessProfile): ProfileDescr
     experienceDescriptors,
     skillDescriptors,
     culturalDescriptors,
+    industryPreferences,
+  };
+}
+
+/**
+ * Extract industry preferences from JD/role description
+ * Only returns preferences if explicitly indicated (preferred/ideal/background in)
+ */
+function extractIndustryPreferences(
+  description: string,
+  experienceText: string
+): { preferred: string[]; hasPreferences: boolean } {
+  const combined = `${description} ${experienceText}`.toLowerCase();
+  const preferred: string[] = [];
+
+  // Industry keywords to detect
+  const industries: Record<string, string[]> = {
+    'Aviation': ['aviation', 'airline', 'aircraft', 'aerospace', 'airport'],
+    'Logistics': ['logistics', 'supply chain', 'freight', 'shipping', 'cargo', 'warehousing', 'distribution'],
+    'Manufacturing': ['manufacturing', 'production', 'factory', 'industrial'],
+    'Technology': ['technology', 'tech', 'software', 'IT', 'digital'],
+    'Healthcare': ['healthcare', 'medical', 'pharmaceutical', 'hospital'],
+    'Financial Services': ['banking', 'finance', 'insurance', 'fintech', 'investment'],
+    'Retail': ['retail', 'consumer goods', 'e-commerce', 'FMCG'],
+    'Energy': ['energy', 'oil', 'gas', 'utilities', 'renewable'],
+    'Consulting': ['consulting', 'advisory', 'professional services'],
+    'Telecommunications': ['telecom', 'telecommunications', 'mobile', 'network'],
+  };
+
+  // Preference indicators - only apply bonus if these phrases are present
+  const preferenceIndicators = [
+    'prefer', 'preferred', 'ideal', 'ideally', 'background in', 'experience in',
+    'from the', 'industry experience', 'sector experience', 'domain expertise',
+    'exposure to', 'familiarity with', 'knowledge of the'
+  ];
+
+  // Check if there are explicit preference indicators
+  const hasPreferenceLanguage = preferenceIndicators.some(indicator =>
+    combined.includes(indicator)
+  );
+
+  // Extract industries mentioned in the JD
+  for (const [industryName, keywords] of Object.entries(industries)) {
+    if (keywords.some(kw => combined.includes(kw))) {
+      // Only add as preference if there's preference language or it's in experience requirements
+      if (hasPreferenceLanguage || experienceText.toLowerCase().includes(keywords[0])) {
+        preferred.push(industryName);
+      }
+    }
+  }
+
+  return {
+    preferred,
+    hasPreferences: preferred.length > 0 && hasPreferenceLanguage,
   };
 }
 
@@ -577,7 +643,11 @@ ${profile.skillDescriptors.map(s => `- ${s.name} (${s.category}): ${s.context}`)
 Motivations: ${profile.culturalDescriptors.motivations.join(', ') || 'Not specified'}
 Pain Points to Address: ${profile.culturalDescriptors.painPoints.join(', ') || 'Not specified'}
 Organizational Values: ${profile.culturalDescriptors.values.join(', ')}
-
+${profile.industryPreferences.hasPreferences ? `
+### Industry Preferences (BONUS - NOT A HARD REQUIREMENT):
+Preferred Industries: ${profile.industryPreferences.preferred.join(', ')}
+NOTE: Industry background is a SOFT PREFERENCE for bonus consideration. Candidates from these industries get a small bonus (+5-10 points) to their overall fit, but lack of industry background should NOT disqualify them. This is separate from functional experience requirements.
+` : ''}
 ## Candidate: ${candidate.name}
 Current Role: ${candidate.currentRole}
 Professional Discipline: ${candidate.skillText.professionalDiscipline || 'Unknown'}
@@ -642,7 +712,7 @@ ${profile.skillDescriptors.map(s => `      {"name": "${s.name}", "achieved": <tr
     "overall": <0-100 closeness score>,
     "motivationAlignment": <0-100>,
     "painPointUnderstanding": <0-100>,
-    "reasoning": "<DETAILED assessment (3-5 sentences):
+    "reasoning": "<DETAILED assessment (4-6 sentences):
 
     STRUCTURE YOUR RESPONSE AS FOLLOWS:
     1. OPENING: '[Candidate Name], currently serving as [Current Role], brings [X] years of [domain] experience.'
@@ -650,12 +720,14 @@ ${profile.skillDescriptors.map(s => `      {"name": "${s.name}", "achieved": <tr
     2. KEY STRENGTHS (reference specific profile requirements): 'Their background demonstrates strong alignment with the ${profile.roleTitle} requirements, particularly in [cite 2-3 specific requirements from the profile like: ${profile.attributeDescriptors.slice(0, 3).map(a => a.label).join(', ')}]. Evidence includes [specific examples from their background].'
 
     3. EXPERIENCE ALIGNMENT: 'Regarding required experiences [${profile.experienceDescriptors.slice(0, 2).map(e => e.name).join(', ')}], the candidate [has demonstrated/lacks] relevant functional expertise through [specific evidence].'
+${profile.industryPreferences.hasPreferences ? `
+    4. INDUSTRY ALIGNMENT: 'Regarding preferred industry background (${profile.industryPreferences.preferred.join(', ')}), the candidate [has/does not have] relevant industry exposure from [their experience at X company/sector]. [If matched: This provides valuable context for the role. / If not matched: However, their transferable skills from [their industry] remain applicable.]'
+` : ''}
+    ${profile.industryPreferences.hasPreferences ? '5' : '4'}. GAPS/CONCERNS: 'Areas requiring development include [specific gap] which may impact [specific requirement from profile].'
 
-    4. GAPS/CONCERNS: 'Areas requiring development include [specific gap] which may impact [specific requirement from profile].'
+    ${profile.industryPreferences.hasPreferences ? '6' : '5'}. RECOMMENDATION: 'Overall Assessment: [Strong/Good/Moderate/Weak] fit for the ${profile.roleTitle} role. [One sentence explaining why].'
 
-    5. RECOMMENDATION: 'Overall Assessment: [Strong/Good/Moderate/Weak] fit for the ${profile.roleTitle} role. [One sentence explaining why].'
-
-    IMPORTANT: Reference actual keywords from the success profile (role: ${profile.roleTitle}, level: ${profile.roleLevel}). Be specific about which requirements are met vs gaps.>"
+    IMPORTANT: Reference actual keywords from the success profile (role: ${profile.roleTitle}, level: ${profile.roleLevel}). Be specific about which requirements are met vs gaps.${profile.industryPreferences.hasPreferences ? ' Include industry alignment assessment.' : ''}>"
   }
 }
 
