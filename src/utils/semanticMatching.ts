@@ -676,12 +676,54 @@ function parseSemanticMatchingResponse(
 ): SemanticMatchResult {
   try {
     // Clean markdown if present
-    const cleaned = content
-      .replace(/```json\n?/g, '')
-      .replace(/```\n?/g, '')
+    let cleaned = content
+      .replace(/```json\n?/gi, '')
+      .replace(/```\n?/gi, '')
       .trim();
 
-    const parsed = JSON.parse(cleaned);
+    // Try to extract JSON object from the response
+    // This handles cases where Claude adds extra text before or after the JSON
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleaned = jsonMatch[0];
+    }
+
+    // Try to parse - if it fails, try to find a valid JSON substring
+    let parsed;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch (firstError) {
+      // Try to find the outermost valid JSON object
+      let braceCount = 0;
+      let startIndex = -1;
+      let endIndex = -1;
+
+      for (let i = 0; i < cleaned.length; i++) {
+        if (cleaned[i] === '{') {
+          if (braceCount === 0) startIndex = i;
+          braceCount++;
+        } else if (cleaned[i] === '}') {
+          braceCount--;
+          if (braceCount === 0 && startIndex !== -1) {
+            endIndex = i + 1;
+            break;
+          }
+        }
+      }
+
+      if (startIndex !== -1 && endIndex !== -1) {
+        const jsonSubstring = cleaned.substring(startIndex, endIndex);
+        try {
+          parsed = JSON.parse(jsonSubstring);
+        } catch (secondError) {
+          console.warn('Failed to parse JSON substring, using defaults');
+          return createDefaultSemanticResult(profile);
+        }
+      } else {
+        console.warn('No valid JSON object found, using defaults');
+        return createDefaultSemanticResult(profile);
+      }
+    }
 
     // Build result with proper structure
     const result: SemanticMatchResult = {

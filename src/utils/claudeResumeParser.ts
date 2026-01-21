@@ -278,11 +278,45 @@ async function callClaudeAPI(
   // Parse the JSON response
   try {
     // Remove any markdown code blocks if present
-    const cleanedContent = content
-      .replace(/```json\n?/g, '')
-      .replace(/```\n?/g, '')
+    let cleanedContent = content
+      .replace(/```json\n?/gi, '')
+      .replace(/```\n?/gi, '')
       .trim();
-    return JSON.parse(cleanedContent);
+
+    // Try to extract JSON object from the response
+    const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleanedContent = jsonMatch[0];
+    }
+
+    // Try to parse - if it fails, try to find a valid JSON substring
+    try {
+      return JSON.parse(cleanedContent);
+    } catch (firstError) {
+      // Try to find the outermost valid JSON object
+      let braceCount = 0;
+      let startIndex = -1;
+      let endIndex = -1;
+
+      for (let i = 0; i < cleanedContent.length; i++) {
+        if (cleanedContent[i] === '{') {
+          if (braceCount === 0) startIndex = i;
+          braceCount++;
+        } else if (cleanedContent[i] === '}') {
+          braceCount--;
+          if (braceCount === 0 && startIndex !== -1) {
+            endIndex = i + 1;
+            break;
+          }
+        }
+      }
+
+      if (startIndex !== -1 && endIndex !== -1) {
+        const jsonSubstring = cleanedContent.substring(startIndex, endIndex);
+        return JSON.parse(jsonSubstring);
+      }
+      throw firstError;
+    }
   } catch {
     throw new Error('Failed to parse Claude API response as JSON');
   }
@@ -447,11 +481,43 @@ Respond with ONLY valid JSON:
 
   const basicInfoData = await basicInfoResponse.json();
   const basicInfoContent = basicInfoData.content?.[0]?.text || '{}';
-  const cleanedBasicInfo = basicInfoContent
-    .replace(/```json\n?/g, '')
-    .replace(/```\n?/g, '')
+  let cleanedBasicInfo = basicInfoContent
+    .replace(/```json\n?/gi, '')
+    .replace(/```\n?/gi, '')
     .trim();
-  const basicInfo = JSON.parse(cleanedBasicInfo);
+
+  // Extract JSON object from response
+  const jsonMatch = cleanedBasicInfo.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    cleanedBasicInfo = jsonMatch[0];
+  }
+
+  let basicInfo;
+  try {
+    basicInfo = JSON.parse(cleanedBasicInfo);
+  } catch {
+    // Try to find valid JSON object
+    let braceCount = 0;
+    let startIndex = -1;
+    let endIndex = -1;
+    for (let i = 0; i < cleanedBasicInfo.length; i++) {
+      if (cleanedBasicInfo[i] === '{') {
+        if (braceCount === 0) startIndex = i;
+        braceCount++;
+      } else if (cleanedBasicInfo[i] === '}') {
+        braceCount--;
+        if (braceCount === 0 && startIndex !== -1) {
+          endIndex = i + 1;
+          break;
+        }
+      }
+    }
+    if (startIndex !== -1 && endIndex !== -1) {
+      basicInfo = JSON.parse(cleanedBasicInfo.substring(startIndex, endIndex));
+    } else {
+      basicInfo = { name: file.name.replace('.pdf', ''), currentRole: '', yearsExperience: 0 };
+    }
+  }
 
   // Extract profile descriptors for semantic matching
   const fullProfile: SuccessProfile = {
