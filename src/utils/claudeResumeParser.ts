@@ -192,6 +192,32 @@ REQUIREMENTS:
 }
 
 /**
+ * Extract explicitly stated years of experience from resume text.
+ * Looks for patterns like "more than 25 years", "over 20 years of experience", "15+ years"
+ * Returns the number of years found, or 0 if no explicit statement found.
+ */
+function extractExplicitYearsFromText(resumeText: string): number {
+  const patterns = [
+    /(?:more\s+than|over|exceed(?:ing|s)?|nearly|approximately|about|circa|close\s+to)\s+(\d{1,2})\s+years?\s+(?:of\s+)?(?:experience|professional|work|career|in\s+the\s+industry)/gi,
+    /(\d{1,2})\+?\s+years?\s+(?:of\s+)?(?:experience|professional|work|career|in\s+the\s+industry)/gi,
+    /(?:with|having|brings?|possess(?:es|ing)?)\s+(?:more\s+than\s+|over\s+)?(\d{1,2})\s+years?\s+(?:of\s+)?(?:experience|professional|work)/gi,
+    /track\s+record\s+(?:of\s+)?(?:more\s+than\s+|over\s+)?(\d{1,2})\s+years?/gi,
+  ];
+
+  let maxYears = 0;
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(resumeText)) !== null) {
+      const years = parseInt(match[1], 10);
+      if (years > 0 && years <= 50 && years > maxYears) {
+        maxYears = years;
+      }
+    }
+  }
+  return maxYears;
+}
+
+/**
  * Extract years that belong to WORK EXPERIENCE sections only, excluding education.
  * Splits the resume into lines and identifies education sections to exclude.
  */
@@ -542,7 +568,7 @@ YEARS CALCULATION:
 - Example: If earliest job started in 1997, then yearsExperience = 2026 - 1997 = 29
 
 Resume:
-${resumeText.substring(0, 12000)}
+${resumeText}
 
 Respond with ONLY valid JSON:
 {"name": "Full Name", "currentRole": "Job Title", "earliestEmploymentYear": <number>, "yearsExperience": <number>}`;
@@ -557,7 +583,7 @@ Respond with ONLY valid JSON:
     },
     body: JSON.stringify({
       model: 'claude-3-5-haiku-20241022',
-      max_tokens: 256,
+      max_tokens: 512,
       messages: [{ role: 'user', content: basicInfoPrompt }],
     }),
   });
@@ -606,33 +632,54 @@ Respond with ONLY valid JSON:
     }
   }
 
-  // PRIMARY: Use Claude's earliestEmploymentYear to calculate years
-  // This is the most reliable because Claude understands context (education vs work)
+  // Multi-source years calculation: gather estimates from all sources, pick the best
   const currentYear = 2026;
+  const yearEstimates: { value: number; source: string; confidence: number }[] = [];
+
+  // SOURCE 1: Claude's earliestEmploymentYear (high confidence if reasonable)
   if (basicInfo.earliestEmploymentYear && basicInfo.earliestEmploymentYear >= 1960 && basicInfo.earliestEmploymentYear <= currentYear) {
     const yearsFromEarliestJob = currentYear - basicInfo.earliestEmploymentYear;
     if (yearsFromEarliestJob > 0 && yearsFromEarliestJob <= 50) {
-      basicInfo.yearsExperience = yearsFromEarliestJob;
+      yearEstimates.push({ value: yearsFromEarliestJob, source: 'claude-earliest-year', confidence: 3 });
     }
   }
 
-  // SECONDARY: Cross-check with regex-based education-aware extraction from resume text
-  // If Claude didn't return earliestEmploymentYear or it seems wrong, use fallback
+  // SOURCE 2: Claude's yearsExperience (lower confidence — may include education or be truncated)
+  if (basicInfo.yearsExperience && basicInfo.yearsExperience > 0 && basicInfo.yearsExperience <= 50) {
+    yearEstimates.push({ value: basicInfo.yearsExperience, source: 'claude-years', confidence: 1 });
+  }
+
+  // SOURCE 3: Explicit years statements in resume text (highest confidence)
+  // e.g., "more than 25 years of experience", "over 20 years", "15+ years"
+  const explicitYears = extractExplicitYearsFromText(resumeText);
+  if (explicitYears > 0) {
+    yearEstimates.push({ value: explicitYears, source: 'explicit-text', confidence: 4 });
+  }
+
+  // SOURCE 4: Regex education-aware extraction from full resume text
   const workExperienceYears = extractWorkExperienceYears(resumeText);
   if (workExperienceYears.length > 0) {
     const earliestWorkYear = Math.min(...workExperienceYears);
     const calculatedYears = currentYear - earliestWorkYear;
     if (calculatedYears > 0 && calculatedYears <= 50) {
-      const currentEstimate = basicInfo.yearsExperience || 0;
-      // Override if: no estimate yet, OR regex finds a significantly different value
-      // (which may mean Claude miscounted or regex is more accurate)
-      if (!currentEstimate || Math.abs(calculatedYears - currentEstimate) > 2) {
-        // When there's a conflict, prefer the SMALLER value (less likely to include education)
-        if (!currentEstimate || calculatedYears < currentEstimate) {
-          basicInfo.yearsExperience = calculatedYears;
-        }
-      }
+      // Boost confidence if regex finds substantially more experience than Claude
+      // This catches cases where Claude saw truncated text or miscounted
+      const claudeEstimate = yearEstimates.find(e => e.source === 'claude-earliest-year');
+      const regexConfidence = (claudeEstimate && calculatedYears > claudeEstimate.value + 5) ? 3 : 2;
+      yearEstimates.push({ value: calculatedYears, source: 'regex-work-years', confidence: regexConfidence });
     }
+  }
+
+  // RESOLUTION: Pick the best estimate
+  // Strategy: Use the HIGHEST confidence source. On ties, prefer the LARGER value
+  // (undercounting from truncation is far more common than overcounting from education,
+  // and education-aware regex already filters education years)
+  if (yearEstimates.length > 0) {
+    yearEstimates.sort((a, b) => {
+      if (b.confidence !== a.confidence) return b.confidence - a.confidence;
+      return b.value - a.value; // On same confidence, prefer larger (less likely truncated)
+    });
+    basicInfo.yearsExperience = yearEstimates[0].value;
   }
 
   // Extract profile descriptors for semantic matching
