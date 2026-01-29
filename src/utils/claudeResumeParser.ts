@@ -190,6 +190,87 @@ REQUIREMENTS:
 - If candidate name cannot be found, use "${fileName.replace('.pdf', '')}"`;
 }
 
+/**
+ * Extract years that belong to WORK EXPERIENCE sections only, excluding education.
+ * Splits the resume into lines and identifies education sections to exclude.
+ */
+function extractWorkExperienceYears(resumeText: string): number[] {
+  const lines = resumeText.split('\n');
+  const educationKeywords = [
+    'education', 'academic', 'degree', 'diploma', 'university', 'college',
+    'school', 'institute', 'bachelor', 'master', 'mba', 'phd', 'doctorate',
+    'certification', 'certified', 'course', 'training', 'qualification',
+    'graduated', 'graduate', 'postgraduate', 'a-level', 'o-level', 'gce',
+    'polytechnic', 'nus', 'ntu', 'smu', 'scholarship'
+  ];
+
+  // Track whether we're inside an education section
+  let inEducationSection = false;
+  const educationYears = new Set<number>();
+  const workYears: number[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    const lineLower = line.toLowerCase();
+
+    // Detect education section headers
+    if (/^(education|academic|qualification|courses|training|certifications?)\b/i.test(line) ||
+        lineLower.includes('education & courses') ||
+        lineLower.includes('education and courses') ||
+        lineLower.includes('academic background') ||
+        lineLower.includes('academic qualifications') ||
+        lineLower.includes('educational background')) {
+      inEducationSection = true;
+      continue;
+    }
+
+    // Detect work experience section headers (exit education mode)
+    if (/^(work\s*experience|professional\s*experience|employment|career|work\s*history)\b/i.test(line) ||
+        lineLower.includes('professional experience') ||
+        lineLower.includes('work experience') ||
+        lineLower.includes('career history') ||
+        lineLower.includes('employment history')) {
+      inEducationSection = false;
+      continue;
+    }
+
+    // Extract years from current line
+    const yearPattern = /\b(19\d{2}|20[0-2]\d)\b/g;
+    const lineYears = line.match(yearPattern);
+    if (lineYears) {
+      const parsedYears = lineYears.map(y => parseInt(y, 10)).filter(y => y >= 1970 && y <= 2026);
+
+      // Check if this line contains education keywords
+      const isEducationLine = inEducationSection ||
+        educationKeywords.some(kw => lineLower.includes(kw));
+
+      for (const year of parsedYears) {
+        if (isEducationLine) {
+          educationYears.add(year);
+        } else {
+          workYears.push(year);
+        }
+      }
+    }
+  }
+
+  // Filter: return only work years that are NOT also education-only years
+  // If a year appears in both, prefer keeping it (could be concurrent work + study)
+  const filteredYears = workYears.filter(y => y >= 1970 && y <= 2026);
+
+  // If no work years found (maybe resume doesn't have clear sections),
+  // fall back to all years but still exclude clearly education-only years
+  if (filteredYears.length === 0) {
+    const allYears = resumeText.match(/\b(19\d{2}|20[0-2]\d)\b/g);
+    if (allYears) {
+      const all = allYears.map(y => parseInt(y, 10)).filter(y => y >= 1970 && y <= 2026);
+      return all.filter(y => !educationYears.has(y));
+    }
+  }
+
+  return filteredYears;
+}
+
 // Helper function to provide matching hints for experience types
 function getExperienceMatchingHints(experienceName: string): string {
   const hints: Record<string, string> = {
@@ -445,15 +526,18 @@ export async function parseResumeWithSemanticMatching(
   const basicInfoPrompt = `Extract from this resume:
 1. Full name
 2. Current/most recent job title
-3. Total years of professional experience
+3. Total years of PROFESSIONAL WORK experience (NOT education)
 
 CRITICAL INSTRUCTION FOR YEARS CALCULATION:
-1. Search the ENTIRE resume for ALL employment dates (look for years like 2006, 2010, 2015, etc.)
-2. Find the EARLIEST year mentioned in work experience sections
-3. Calculate: 2026 (current year) minus that earliest year
-4. Example: "Nov 2006 - Nov 2008" means career started in 2006, so years = 2026 - 2006 = 20
+1. Search the ENTIRE resume for ALL employment dates in WORK EXPERIENCE sections
+2. EXCLUDE years from EDUCATION sections (degrees, diplomas, courses, university, school)
+3. Find the EARLIEST year from an actual JOB/EMPLOYMENT entry only
+4. Calculate: 2026 (current year) minus that earliest employment year
+5. Example: "Nov 2006 - Nov 2008" at a company means career started in 2006, so years = 2026 - 2006 = 20
 
-IMPORTANT: The earliest job is often at the BOTTOM of the resume. Make sure to scan the entire document.
+IMPORTANT:
+- The earliest job is often at the BOTTOM of the resume. Make sure to scan the entire document.
+- Do NOT count education years. For example, if someone has "1989 - Bachelor's degree" and "1997 - First Job", the years of experience = 2026 - 1997 = 29, NOT 2026 - 1989 = 37.
 
 Resume:
 ${resumeText.substring(0, 12000)}
@@ -522,19 +606,17 @@ Respond with ONLY valid JSON:
 
   // Fallback: Calculate years from resume text if Claude's response seems wrong
   // This handles cases where Claude miscalculates or returns incorrect years
-  const yearMatches = resumeText.match(/\b(19\d{2}|20[0-2]\d)\b/g);
-  if (yearMatches && yearMatches.length > 0) {
-    const years = yearMatches.map(y => parseInt(y, 10)).filter(y => y >= 1970 && y <= 2026);
-    if (years.length > 0) {
-      const earliestYear = Math.min(...years);
-      const currentYear = 2026;
-      const calculatedYears = currentYear - earliestYear;
-      // Only override if calculated years is significantly different (more than 2 years)
-      // and if the calculated value is larger (Claude may have underestimated)
-      if (calculatedYears > 0 && calculatedYears <= 50) {
-        if (!basicInfo.yearsExperience || calculatedYears > basicInfo.yearsExperience + 2) {
-          basicInfo.yearsExperience = calculatedYears;
-        }
+  // IMPORTANT: Exclude years from education sections to avoid overcounting
+  const workExperienceYears = extractWorkExperienceYears(resumeText);
+  if (workExperienceYears.length > 0) {
+    const earliestWorkYear = Math.min(...workExperienceYears);
+    const currentYear = 2026;
+    const calculatedYears = currentYear - earliestWorkYear;
+    // Only override if calculated years is significantly different (more than 2 years)
+    // and if the calculated value is larger (Claude may have underestimated)
+    if (calculatedYears > 0 && calculatedYears <= 50) {
+      if (!basicInfo.yearsExperience || calculatedYears > basicInfo.yearsExperience + 2) {
+        basicInfo.yearsExperience = calculatedYears;
       }
     }
   }

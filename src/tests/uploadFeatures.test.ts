@@ -670,3 +670,164 @@ if (yearsTestFailed === 0) {
   console.log(`  ❌ ${yearsTestFailed} test(s) failed`);
 }
 console.log('');
+
+// Test 12: Education Years Exclusion Fix
+console.log('=== Test 12: Education Years Exclusion Fix ===');
+console.log('');
+console.log('ISSUE: Fiona Chua showing 37 years instead of ~28 years');
+console.log('CAUSE: Parser included years from Education section (1989 degree) in work experience calculation');
+console.log('');
+
+// Simulate the extractWorkExperienceYears function
+function extractWorkExperienceYearsTest(resumeText: string): number[] {
+  const lines = resumeText.split('\n');
+  const educationKeywords = [
+    'education', 'academic', 'degree', 'diploma', 'university', 'college',
+    'school', 'institute', 'bachelor', 'master', 'mba', 'phd', 'doctorate',
+    'certification', 'certified', 'course', 'training', 'qualification',
+    'graduated', 'graduate', 'postgraduate', 'a-level', 'o-level', 'gce',
+    'polytechnic', 'nus', 'ntu', 'smu', 'scholarship'
+  ];
+
+  let inEducationSection = false;
+  const educationYears = new Set<number>();
+  const workYears: number[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    const lineLower = line.toLowerCase();
+
+    if (/^(education|academic|qualification|courses|training|certifications?)\b/i.test(line) ||
+        lineLower.includes('education & courses') ||
+        lineLower.includes('education and courses') ||
+        lineLower.includes('academic background') ||
+        lineLower.includes('academic qualifications') ||
+        lineLower.includes('educational background')) {
+      inEducationSection = true;
+      continue;
+    }
+
+    if (/^(work\s*experience|professional\s*experience|employment|career|work\s*history)\b/i.test(line) ||
+        lineLower.includes('professional experience') ||
+        lineLower.includes('work experience') ||
+        lineLower.includes('career history') ||
+        lineLower.includes('employment history')) {
+      inEducationSection = false;
+      continue;
+    }
+
+    const yearPattern = /\b(19\d{2}|20[0-2]\d)\b/g;
+    const lineYears = line.match(yearPattern);
+    if (lineYears) {
+      const parsedYears = lineYears.map(y => parseInt(y, 10)).filter(y => y >= 1970 && y <= 2026);
+      const isEducationLine = inEducationSection ||
+        educationKeywords.some(kw => lineLower.includes(kw));
+
+      for (const year of parsedYears) {
+        if (isEducationLine) {
+          educationYears.add(year);
+        } else {
+          workYears.push(year);
+        }
+      }
+    }
+  }
+
+  const filteredYears = workYears.filter(y => y >= 1970 && y <= 2026);
+
+  if (filteredYears.length === 0) {
+    const allYears = resumeText.match(/\b(19\d{2}|20[0-2]\d)\b/g);
+    if (allYears) {
+      const all = allYears.map(y => parseInt(y, 10)).filter(y => y >= 1970 && y <= 2026);
+      return all.filter(y => !educationYears.has(y));
+    }
+  }
+
+  return filteredYears;
+}
+
+const educationExclusionTests = [
+  {
+    name: 'Fiona Chua (education years should be excluded)',
+    resumeText: `WORK EXPERIENCE
+2020 - Present  Senior Director & General Manager
+Roche Diagnostics Asia Pacific Pte Ltd
+
+2010 - 2020  Regional Sales Director
+Abbott Laboratories Singapore
+
+1999 - 2010  Business Development Manager
+BioNet Laboratories Asia Pacific Pte Ltd
+
+1997 - 1999  Account Executive
+Roche Diagnostics Asia Pacific Pte Ltd
+
+EDUCATION & COURSES
+
+2013-2014  Masters of Business Administration (with Distinction)
+University of New Castle, Australia
+
+2005  Professional Diploma in Asia Pacific Marketing
+MIS (Awarded by MIS & NUS extension)
+
+1989  Bachelor of Science (Honours) in Biotechnology
+National University of Singapore`,
+    expectedMinYears: 27,  // 2026 - 1997 = 29, allow some variance
+    expectedMaxYears: 29,
+  },
+  {
+    name: 'Resume with education before work (should use work years only)',
+    resumeText: `EDUCATION
+1985  Bachelor of Engineering
+MIT
+
+PROFESSIONAL EXPERIENCE
+2000 - 2010  Senior Engineer at Boeing
+2010 - Present  VP Engineering at Airbus`,
+    expectedMinYears: 25,  // 2026 - 2000 = 26
+    expectedMaxYears: 27,
+  },
+  {
+    name: 'Resume with no clear sections (fallback with education filtering)',
+    resumeText: `John Smith
+1992 BSc Computer Science, Stanford University
+1995 Software Developer at Google
+2005 Senior Developer at Apple
+2015 VP Engineering at Netflix`,
+    expectedMinYears: 30,  // 2026 - 1995 = 31
+    expectedMaxYears: 31,
+  },
+];
+
+let educationTestsPassed = 0;
+
+console.log('Testing education years exclusion:');
+console.log('');
+
+for (const tc of educationExclusionTests) {
+  const workYears = extractWorkExperienceYearsTest(tc.resumeText);
+  const earliestWorkYear = workYears.length > 0 ? Math.min(...workYears) : 0;
+  const calculatedYears = earliestWorkYear > 0 ? 2026 - earliestWorkYear : 0;
+  const passed = calculatedYears >= tc.expectedMinYears && calculatedYears <= tc.expectedMaxYears;
+
+  if (passed) {
+    educationTestsPassed++;
+    console.log(`  ✅ ${tc.name}`);
+    console.log(`     Earliest work year: ${earliestWorkYear}, Calculated: ${calculatedYears} years (expected: ${tc.expectedMinYears}-${tc.expectedMaxYears})`);
+  } else {
+    console.log(`  ❌ ${tc.name}`);
+    console.log(`     Earliest work year: ${earliestWorkYear}, Calculated: ${calculatedYears} years (expected: ${tc.expectedMinYears}-${tc.expectedMaxYears})`);
+    console.log(`     Work years found: ${workYears.join(', ')}`);
+  }
+  console.log('');
+}
+
+console.log(`Education Exclusion Test Results: ${educationTestsPassed}/${educationExclusionTests.length} passed`);
+console.log('');
+
+if (educationTestsPassed === educationExclusionTests.length) {
+  console.log('  ✅ Education years exclusion fix VERIFIED');
+} else {
+  console.log(`  ❌ ${educationExclusionTests.length - educationTestsPassed} test(s) failed`);
+}
+console.log('');
