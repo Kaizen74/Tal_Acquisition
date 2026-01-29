@@ -527,24 +527,25 @@ export async function parseResumeWithSemanticMatching(
   const basicInfoPrompt = `Extract from this resume:
 1. Full name
 2. Current/most recent job title
-3. Total years of PROFESSIONAL WORK experience (NOT education)
+3. The EARLIEST year the person started an actual JOB or EMPLOYMENT (not education/degree)
+4. Total years of PROFESSIONAL WORK experience (NOT education)
 
-CRITICAL INSTRUCTION FOR YEARS CALCULATION:
-1. Search the ENTIRE resume for ALL employment dates in WORK EXPERIENCE sections
-2. EXCLUDE years from EDUCATION sections (degrees, diplomas, courses, university, school)
-3. Find the EARLIEST year from an actual JOB/EMPLOYMENT entry only
-4. Calculate: 2026 (current year) minus that earliest employment year
-5. Example: "Nov 2006 - Nov 2008" at a company means career started in 2006, so years = 2026 - 2006 = 20
+CRITICAL - EARLIEST EMPLOYMENT YEAR:
+- Scan the ENTIRE resume, especially the bottom, for the very first JOB entry
+- A JOB entry has a company name, a job title, and dates
+- EXCLUDE education entries: degrees, diplomas, university, school, courses, certifications
+- For example, if someone has "1989 - Bachelor's degree at NUS" and "1997 - Account Executive at Roche", the earliest EMPLOYMENT year is 1997, NOT 1989
+- The education section often contains years for degrees — these are NOT employment years
 
-IMPORTANT:
-- The earliest job is often at the BOTTOM of the resume. Make sure to scan the entire document.
-- Do NOT count education years. For example, if someone has "1989 - Bachelor's degree" and "1997 - First Job", the years of experience = 2026 - 1997 = 29, NOT 2026 - 1989 = 37.
+YEARS CALCULATION:
+- yearsExperience = 2026 (current year) minus earliestEmploymentYear
+- Example: If earliest job started in 1997, then yearsExperience = 2026 - 1997 = 29
 
 Resume:
 ${resumeText.substring(0, 12000)}
 
 Respond with ONLY valid JSON:
-{"name": "Full Name", "currentRole": "Job Title", "yearsExperience": <number>}`;
+{"name": "Full Name", "currentRole": "Job Title", "earliestEmploymentYear": <number>, "yearsExperience": <number>}`;
 
   const basicInfoResponse = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -605,22 +606,31 @@ Respond with ONLY valid JSON:
     }
   }
 
-  // Fallback: Calculate years from resume text using education-aware extraction
-  // This is MORE RELIABLE than Claude's response because it explicitly excludes
-  // education section years (e.g., "1989 - Bachelor's degree" should NOT count)
-  // ALWAYS prefer this value when available, as Claude may include education years
+  // PRIMARY: Use Claude's earliestEmploymentYear to calculate years
+  // This is the most reliable because Claude understands context (education vs work)
+  const currentYear = 2026;
+  if (basicInfo.earliestEmploymentYear && basicInfo.earliestEmploymentYear >= 1960 && basicInfo.earliestEmploymentYear <= currentYear) {
+    const yearsFromEarliestJob = currentYear - basicInfo.earliestEmploymentYear;
+    if (yearsFromEarliestJob > 0 && yearsFromEarliestJob <= 50) {
+      basicInfo.yearsExperience = yearsFromEarliestJob;
+    }
+  }
+
+  // SECONDARY: Cross-check with regex-based education-aware extraction from resume text
+  // If Claude didn't return earliestEmploymentYear or it seems wrong, use fallback
   const workExperienceYears = extractWorkExperienceYears(resumeText);
   if (workExperienceYears.length > 0) {
     const earliestWorkYear = Math.min(...workExperienceYears);
-    const currentYear = 2026;
     const calculatedYears = currentYear - earliestWorkYear;
     if (calculatedYears > 0 && calculatedYears <= 50) {
-      // Use the education-filtered value as the authoritative source
-      // It corrects BOTH over-counting (Claude included education years)
-      // and under-counting (Claude missed early career entries)
-      const claudeYears = basicInfo.yearsExperience || 0;
-      if (!claudeYears || Math.abs(calculatedYears - claudeYears) > 2) {
-        basicInfo.yearsExperience = calculatedYears;
+      const currentEstimate = basicInfo.yearsExperience || 0;
+      // Override if: no estimate yet, OR regex finds a significantly different value
+      // (which may mean Claude miscounted or regex is more accurate)
+      if (!currentEstimate || Math.abs(calculatedYears - currentEstimate) > 2) {
+        // When there's a conflict, prefer the SMALLER value (less likely to include education)
+        if (!currentEstimate || calculatedYears < currentEstimate) {
+          basicInfo.yearsExperience = calculatedYears;
+        }
       }
     }
   }
