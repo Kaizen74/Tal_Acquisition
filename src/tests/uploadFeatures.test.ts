@@ -831,3 +831,80 @@ if (educationTestsPassed === educationExclusionTests.length) {
   console.log(`  ❌ ${educationExclusionTests.length - educationTestsPassed} test(s) failed`);
 }
 console.log('');
+
+// Test 13: Years Override Logic — Claude over-counts, fallback corrects
+console.log('=== Test 13: Years Override When Claude Includes Education Years ===');
+console.log('');
+console.log('ISSUE: Claude API returns 37 years (includes 1989 education), fallback correctly computes ~29');
+console.log('FIX: Fallback now overrides Claude when difference > 2 years (in EITHER direction)');
+console.log('');
+
+function simulateYearsOverride(claudeYears: number, resumeText: string): { finalYears: number; source: string } {
+  const workYears = extractWorkExperienceYearsTest(resumeText);
+  if (workYears.length > 0) {
+    const earliestWorkYear = Math.min(...workYears);
+    const currentYear = 2026;
+    const calculatedYears = currentYear - earliestWorkYear;
+    if (calculatedYears > 0 && calculatedYears <= 50) {
+      // NEW logic: override when difference is significant in EITHER direction
+      if (!claudeYears || Math.abs(calculatedYears - claudeYears) > 2) {
+        return { finalYears: calculatedYears, source: 'education-filtered fallback' };
+      }
+    }
+  }
+  return { finalYears: claudeYears, source: 'Claude API' };
+}
+
+const overrideTests = [
+  {
+    name: 'Fiona Chua: Claude says 37, fallback says 29 (should use fallback)',
+    claudeYears: 37,
+    resumeText: educationExclusionTests[0].resumeText,
+    expectedMin: 27,
+    expectedMax: 29,
+    shouldOverride: true,
+  },
+  {
+    name: 'Claude says 20, fallback says 20 (should keep Claude)',
+    claudeYears: 20,
+    resumeText: `WORK EXPERIENCE\n2006 - 2018  Senior Manager at Acme Corp\n2018 - Present  VP at GlobalTech`,
+    expectedMin: 19,
+    expectedMax: 21,
+    shouldOverride: false,
+  },
+  {
+    name: 'Claude says 5, fallback says 20 (Claude under-counted, should use fallback)',
+    claudeYears: 5,
+    resumeText: `WORK EXPERIENCE\n2006 - 2018  Senior Manager at Acme Corp\n2018 - Present  VP at GlobalTech`,
+    expectedMin: 19,
+    expectedMax: 21,
+    shouldOverride: true,
+  },
+];
+
+let overrideTestsPassed = 0;
+
+for (const tc of overrideTests) {
+  const result = simulateYearsOverride(tc.claudeYears, tc.resumeText);
+  const passed = result.finalYears >= tc.expectedMin && result.finalYears <= tc.expectedMax;
+  const overrideMatch = tc.shouldOverride ? result.source === 'education-filtered fallback' : result.source === 'Claude API';
+
+  if (passed && overrideMatch) {
+    overrideTestsPassed++;
+    console.log(`  ✅ ${tc.name}`);
+    console.log(`     Claude: ${tc.claudeYears}y → Final: ${result.finalYears}y (source: ${result.source})`);
+  } else {
+    console.log(`  ❌ ${tc.name}`);
+    console.log(`     Claude: ${tc.claudeYears}y → Final: ${result.finalYears}y (source: ${result.source})`);
+    console.log(`     Expected: ${tc.expectedMin}-${tc.expectedMax}y, override: ${tc.shouldOverride}`);
+  }
+  console.log('');
+}
+
+console.log(`Years Override Test Results: ${overrideTestsPassed}/${overrideTests.length} passed`);
+if (overrideTestsPassed === overrideTests.length) {
+  console.log('  ✅ Years override logic VERIFIED');
+} else {
+  console.log(`  ❌ ${overrideTests.length - overrideTestsPassed} test(s) failed`);
+}
+console.log('');

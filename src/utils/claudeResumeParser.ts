@@ -25,6 +25,7 @@ interface SuccessProfileContext {
   motivations?: string[];
   painPoints?: string[];
   academicBackground?: { minDegree: string; preferredFields: string[]; certifications: string[] };
+  rawProfileText?: string; // Raw JD/profile text for preference extraction
 }
 
 interface ClaudeResumeResponse {
@@ -604,18 +605,21 @@ Respond with ONLY valid JSON:
     }
   }
 
-  // Fallback: Calculate years from resume text if Claude's response seems wrong
-  // This handles cases where Claude miscalculates or returns incorrect years
-  // IMPORTANT: Exclude years from education sections to avoid overcounting
+  // Fallback: Calculate years from resume text using education-aware extraction
+  // This is MORE RELIABLE than Claude's response because it explicitly excludes
+  // education section years (e.g., "1989 - Bachelor's degree" should NOT count)
+  // ALWAYS prefer this value when available, as Claude may include education years
   const workExperienceYears = extractWorkExperienceYears(resumeText);
   if (workExperienceYears.length > 0) {
     const earliestWorkYear = Math.min(...workExperienceYears);
     const currentYear = 2026;
     const calculatedYears = currentYear - earliestWorkYear;
-    // Only override if calculated years is significantly different (more than 2 years)
-    // and if the calculated value is larger (Claude may have underestimated)
     if (calculatedYears > 0 && calculatedYears <= 50) {
-      if (!basicInfo.yearsExperience || calculatedYears > basicInfo.yearsExperience + 2) {
+      // Use the education-filtered value as the authoritative source
+      // It corrects BOTH over-counting (Claude included education years)
+      // and under-counting (Claude missed early career entries)
+      const claudeYears = basicInfo.yearsExperience || 0;
+      if (!claudeYears || Math.abs(calculatedYears - claudeYears) > 2) {
         basicInfo.yearsExperience = calculatedYears;
       }
     }
@@ -632,6 +636,7 @@ Respond with ONLY valid JSON:
     motivations: successProfile.motivations || [],
     painPoints: successProfile.painPoints || [],
     weekInLife: [],
+    rawProfileText: successProfile.rawProfileText || '',
   };
   const profileDescriptors = extractProfileDescriptors(fullProfile);
 

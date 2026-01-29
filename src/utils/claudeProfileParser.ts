@@ -59,8 +59,10 @@ export async function parseProfilePDFWithClaude(
   // Call Claude API
   const response = await callClaudeAPI(apiKey, prompt);
 
-  // Convert response to SuccessProfile
-  return buildSuccessProfile(response);
+  // Convert response to SuccessProfile, preserving raw text for preference extraction
+  const profile = buildSuccessProfile(response);
+  profile.rawProfileText = pdfText;
+  return profile;
 }
 
 function buildProfilePrompt(pdfText: string): string {
@@ -85,7 +87,7 @@ Respond with ONLY a valid JSON object (no markdown, no explanation) in this exac
     "title": "Job Title",
     "level": "Seniority Level (e.g., JG2-JG3, Senior, Manager)",
     "objective": "Main objective or purpose of the role",
-    "description": "Brief description of the role"
+    "description": "Full description of the role including any preferred qualifications, desired traits, or bonus criteria. Preserve any sentences containing words like 'preferred', 'ideal', 'desirable', 'nice to have', 'bonus', 'advantageous' EXACTLY as written in the original document."
   },
   "attributes": [
     { "key": "camelCaseKey", "label": "Human Readable Label", "value": 0-100 }

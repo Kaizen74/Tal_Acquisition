@@ -53,6 +53,7 @@ export interface SuccessProfile {
   motivations: string[];
   painPoints: string[];
   weekInLife: string[];
+  rawProfileText?: string; // Raw JD/profile text preserved for preference extraction
 }
 
 export interface PersonalInfo {

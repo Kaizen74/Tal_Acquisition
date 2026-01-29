@@ -1408,6 +1408,7 @@ export async function parseCandidatesCSVWithSemanticMatching(
       motivations: successProfile.motivations || [],
       painPoints: successProfile.painPoints || [],
       weekInLife: [],
+      rawProfileText: successProfile.rawProfileText || '',
     };
     const profileDescriptors = extractProfileDescriptors(fullProfile);
 

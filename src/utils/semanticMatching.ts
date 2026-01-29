@@ -170,7 +170,10 @@ export function extractProfileDescriptors(profile: SuccessProfile): ProfileDescr
   };
 
   // Combine all text sources for comprehensive preference extraction
+  // Include raw profile text (original JD/PDF content) to catch preference language
+  // that may have been summarized away in structured fields
   const allProfileTextSources = [
+    profile.rawProfileText || '', // Raw JD text — most likely to contain preference language
     profile.role.description || '',
     ...profile.requiredExperiences.map(e => `${e.name}: ${e.description}`),
     ...(profile.motivations || []),

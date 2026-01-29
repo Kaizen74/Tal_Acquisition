@@ -59,6 +59,8 @@ export function ResumeUpload({
       attributeConfig: successProfile.attributeConfig,
       motivations: successProfile.motivations,
       painPoints: successProfile.painPoints,
+      academicBackground: successProfile.academicBackground,
+      rawProfileText: successProfile.rawProfileText,
     };
 
     // Use semantic matching when API key is available for deep language analysis
@@ -84,6 +86,8 @@ export function ResumeUpload({
       attributeConfig: successProfile.attributeConfig,
       motivations: successProfile.motivations,
       painPoints: successProfile.painPoints,
+      academicBackground: successProfile.academicBackground,
+      rawProfileText: successProfile.rawProfileText,
     };
 
     // Progress callback for large datasets
