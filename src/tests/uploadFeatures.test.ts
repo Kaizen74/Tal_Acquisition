@@ -678,7 +678,7 @@ console.log('ISSUE: Fiona Chua showing 37 years instead of ~28 years');
 console.log('CAUSE: Parser included years from Education section (1989 degree) in work experience calculation');
 console.log('');
 
-// Simulate the extractWorkExperienceYears function
+// Simulate the extractWorkExperienceYears function (mirrors production code)
 function extractWorkExperienceYearsTest(resumeText: string): number[] {
   const lines = resumeText.split('\n');
   const educationKeywords = [
@@ -686,7 +686,8 @@ function extractWorkExperienceYearsTest(resumeText: string): number[] {
     'school', 'institute', 'bachelor', 'master', 'mba', 'phd', 'doctorate',
     'certification', 'certified', 'course', 'training', 'qualification',
     'graduated', 'graduate', 'postgraduate', 'a-level', 'o-level', 'gce',
-    'polytechnic', 'nus', 'ntu', 'smu', 'scholarship'
+    'polytechnic', 'nus', 'ntu', 'smu', 'scholarship',
+    'workshop', 'seminar', 'programme', 'program', 'awarded by'
   ];
 
   let inEducationSection = false;
@@ -697,12 +698,19 @@ function extractWorkExperienceYearsTest(resumeText: string): number[] {
     const line = lines[i].trim();
     const lineLower = line.toLowerCase();
 
+    // Detect education / training / courses section headers
     if (/^(education|academic|qualification|courses|training|certifications?)\b/i.test(line) ||
         lineLower.includes('education & courses') ||
         lineLower.includes('education and courses') ||
         lineLower.includes('academic background') ||
         lineLower.includes('academic qualifications') ||
-        lineLower.includes('educational background')) {
+        lineLower.includes('educational background') ||
+        lineLower.includes('company courses') ||
+        lineLower.includes('professional development') ||
+        lineLower.includes('workshops & seminars') ||
+        lineLower.includes('training & development') ||
+        lineLower.includes('courses attended') ||
+        lineLower.includes('certifications & courses')) {
       inEducationSection = true;
       continue;
     }
@@ -796,6 +804,59 @@ PROFESSIONAL EXPERIENCE
 2015 VP Engineering at Netflix`,
     expectedMinYears: 30,  // 2026 - 1995 = 31
     expectedMaxYears: 31,
+  },
+  {
+    name: 'Fiona FULL 4-page resume (Education & Company Courses on last page)',
+    resumeText: `PROFESSIONAL SUMMARY
+A seasoned sales, marketing and business management professional in IVD field for more than 20 years (3 years general management and >17 years sales & marketing experience)
+
+WORK EXPERIENCE
+Jan 2019 - present  Senior Director & General Manager, Asean South, Biomerieux
+Mar 2015 - Dec 2018  Business Manager, Biomerieux Singapore
+2009 - 2014  Regional Product Manager, Asia Pacific, Haemonetics (formerly Pall Medical)
+2006 - 2008  Marketing Manager, South East Asia, GE Healthcare
+
+Awards:
+2015 President Award (bioMerieux)
+2017 APAC Marketing Award
+2019 Best Business Growth ASEAN
+
+EDUCATION & COURSES
+
+2013-2014  Masters of Business Administration (with Distinction)
+University of New Castle, Australia.
+
+2005  Professional Diploma in Asia Pacific Marketing
+MIS (Awarded by MIS & NUS extension)
+
+2003  Graduate Diploma in Business & Finance
+MDIS (Awarded by Southern Cross University - Australia)
+
+1994-1995  Bachelor of Applied Science (Medical Laboratory Science)
+Queensland University of Technology, Australia
+
+1989-1992  Diploma in Biotechnology
+(Medical Technology Option)
+Singapore Polytechnic
+
+Company Courses :
+
+Sep 2021-present  LEAD program (Biomerieux Asia Pacific)
+Oct 2020-Mar 2021  CEDEP Executive Management Course
+(Merieux University with INSEAD School of Business)
+2019  Management Basic (Biomerieux)
+2018  Management to Leadership (Biomerieux)
+2010  Sales Coaching (Pall Medical)
+2006  CECOR workshop (GE internal Marketing training workshop)
+2006  Influencing Skills (GE Healthcare)
+2004  Value selling (Beckman Coulter)
+2003  Negotiation Skills (Beckman Coulter)
+2002  Masterful Selling Skills (Beckman Coulter)
+
+Availability
+Official notice period : 3 months`,
+    expectedMinYears: 19,  // 2026 - 2006 = 20
+    expectedMaxYears: 21,
   },
 ];
 
@@ -1034,6 +1095,14 @@ EDUCATION
     expectedMin: 25,
     expectedMax: 27,
     note: 'regex-work-years (conf=2) gives 26; claude-years (conf=1) gives 3; regex wins',
+  },
+  {
+    name: 'Fiona FULL 4-page: Education 1989 + Company Courses 2002 + Work 2006',
+    claudeResponse: { yearsExperience: 37, earliestEmploymentYear: 1989 },
+    resumeText: educationExclusionTests[3].resumeText,
+    expectedMin: 20,
+    expectedMax: 20,
+    note: 'explicit-text (conf=4) gives 20 from "more than 20 years"; Education/Company Courses years excluded by regex',
   },
 ];
 

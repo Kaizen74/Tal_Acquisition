@@ -236,7 +236,8 @@ function extractWorkExperienceYears(resumeText: string): number[] {
     'school', 'institute', 'bachelor', 'master', 'mba', 'phd', 'doctorate',
     'certification', 'certified', 'course', 'training', 'qualification',
     'graduated', 'graduate', 'postgraduate', 'a-level', 'o-level', 'gce',
-    'polytechnic', 'nus', 'ntu', 'smu', 'scholarship'
+    'polytechnic', 'nus', 'ntu', 'smu', 'scholarship',
+    'workshop', 'seminar', 'programme', 'program', 'awarded by'
   ];
 
   // Track whether we're inside an education section
@@ -248,13 +249,19 @@ function extractWorkExperienceYears(resumeText: string): number[] {
     const line = lines[i].trim();
     const lineLower = line.toLowerCase();
 
-    // Detect education section headers
+    // Detect education / training / courses section headers
     if (/^(education|academic|qualification|courses|training|certifications?)\b/i.test(line) ||
         lineLower.includes('education & courses') ||
         lineLower.includes('education and courses') ||
         lineLower.includes('academic background') ||
         lineLower.includes('academic qualifications') ||
-        lineLower.includes('educational background')) {
+        lineLower.includes('educational background') ||
+        lineLower.includes('company courses') ||
+        lineLower.includes('professional development') ||
+        lineLower.includes('workshops & seminars') ||
+        lineLower.includes('training & development') ||
+        lineLower.includes('courses attended') ||
+        lineLower.includes('certifications & courses')) {
       inEducationSection = true;
       continue;
     }
