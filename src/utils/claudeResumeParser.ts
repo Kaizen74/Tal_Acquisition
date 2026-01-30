@@ -197,11 +197,18 @@ REQUIREMENTS:
  * Returns the number of years found, or 0 if no explicit statement found.
  */
 function extractExplicitYearsFromText(resumeText: string): number {
+  // Patterns ordered from most specific to most general
   const patterns = [
-    /(?:more\s+than|over|exceed(?:ing|s)?|nearly|approximately|about|circa|close\s+to)\s+(\d{1,2})\s+years?\s+(?:of\s+)?(?:experience|professional|work|career|in\s+the\s+industry)/gi,
-    /(\d{1,2})\+?\s+years?\s+(?:of\s+)?(?:experience|professional|work|career|in\s+the\s+industry)/gi,
-    /(?:with|having|brings?|possess(?:es|ing)?)\s+(?:more\s+than\s+|over\s+)?(\d{1,2})\s+years?\s+(?:of\s+)?(?:experience|professional|work)/gi,
-    /track\s+record\s+(?:of\s+)?(?:more\s+than\s+|over\s+)?(\d{1,2})\s+years?/gi,
+    // "more than 20 years" / "over 25 years" — standalone (may be followed by anything)
+    /(?:more\s+than|over|exceed(?:ing|s)?|nearly|approximately|close\s+to)\s+(\d{1,2})\s+years/gi,
+    // "25+ years" or "25 years of experience"
+    /(\d{1,2})\+\s*years/gi,
+    /(\d{1,2})\s+years?\s+(?:of\s+)?(?:experience|professional\s+experience|work\s+experience|industry\s+experience|career)/gi,
+    // "with 20 years" / "having 25 years" / "brings 15 years"
+    /(?:with|having|brings?|possess(?:es|ing)?)\s+(?:more\s+than\s+|over\s+)?(\d{1,2})\s+years/gi,
+    // "track record of 20 years" / ">17 years"
+    /track\s+record\s+(?:of\s+)?(?:more\s+than\s+|over\s+)?(\d{1,2})\s+years/gi,
+    />\s*(\d{1,2})\s+years/gi,
   ];
 
   let maxYears = 0;
@@ -209,7 +216,8 @@ function extractExplicitYearsFromText(resumeText: string): number {
     let match;
     while ((match = pattern.exec(resumeText)) !== null) {
       const years = parseInt(match[1], 10);
-      if (years > 0 && years <= 50 && years > maxYears) {
+      // Only accept values >= 5 to avoid false positives like "3 years general management"
+      if (years >= 5 && years <= 50 && years > maxYears) {
         maxYears = years;
       }
     }
@@ -662,22 +670,34 @@ Respond with ONLY valid JSON:
     const earliestWorkYear = Math.min(...workExperienceYears);
     const calculatedYears = currentYear - earliestWorkYear;
     if (calculatedYears > 0 && calculatedYears <= 50) {
-      // Boost confidence if regex finds substantially more experience than Claude
-      // This catches cases where Claude saw truncated text or miscounted
+      // Boost confidence when regex and Claude disagree significantly
+      // This catches BOTH: Claude undercounting (truncated text) and overcounting (education years)
       const claudeEstimate = yearEstimates.find(e => e.source === 'claude-earliest-year');
-      const regexConfidence = (claudeEstimate && calculatedYears > claudeEstimate.value + 5) ? 3 : 2;
+      const bigDisagreement = claudeEstimate && Math.abs(calculatedYears - claudeEstimate.value) > 5;
+      const regexConfidence = bigDisagreement ? 3 : 2;
       yearEstimates.push({ value: calculatedYears, source: 'regex-work-years', confidence: regexConfidence });
     }
   }
 
   // RESOLUTION: Pick the best estimate
-  // Strategy: Use the HIGHEST confidence source. On ties, prefer the LARGER value
-  // (undercounting from truncation is far more common than overcounting from education,
-  // and education-aware regex already filters education years)
+  // Strategy: Highest confidence wins. On confidence ties:
+  //   - If regex-work-years is in the tie, prefer it (only source that filters education)
+  //   - Otherwise prefer explicit-text (candidate's own statement)
+  //   - Otherwise prefer larger value (undercounting from truncation is more common)
   if (yearEstimates.length > 0) {
+    // Source priority for tie-breaking (higher = preferred)
+    const sourcePriority: Record<string, number> = {
+      'regex-work-years': 3, // Education-aware, most reliable for distinguishing work vs education
+      'explicit-text': 2,    // Candidate's own statement
+      'claude-earliest-year': 1,
+      'claude-years': 0,
+    };
     yearEstimates.sort((a, b) => {
       if (b.confidence !== a.confidence) return b.confidence - a.confidence;
-      return b.value - a.value; // On same confidence, prefer larger (less likely truncated)
+      const aPriority = sourcePriority[a.source] ?? 0;
+      const bPriority = sourcePriority[b.source] ?? 0;
+      if (bPriority !== aPriority) return bPriority - aPriority;
+      return b.value - a.value; // Final fallback: prefer larger
     });
     basicInfo.yearsExperience = yearEstimates[0].value;
   }

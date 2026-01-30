@@ -849,10 +849,12 @@ console.log('');
 // Simulate extractExplicitYearsFromText
 function extractExplicitYearsTest(resumeText: string): number {
   const patterns = [
-    /(?:more\s+than|over|exceed(?:ing|s)?|nearly|approximately|about|circa|close\s+to)\s+(\d{1,2})\s+years?\s+(?:of\s+)?(?:experience|professional|work|career|in\s+the\s+industry)/gi,
-    /(\d{1,2})\+?\s+years?\s+(?:of\s+)?(?:experience|professional|work|career|in\s+the\s+industry)/gi,
-    /(?:with|having|brings?|possess(?:es|ing)?)\s+(?:more\s+than\s+|over\s+)?(\d{1,2})\s+years?\s+(?:of\s+)?(?:experience|professional|work)/gi,
-    /track\s+record\s+(?:of\s+)?(?:more\s+than\s+|over\s+)?(\d{1,2})\s+years?/gi,
+    /(?:more\s+than|over|exceed(?:ing|s)?|nearly|approximately|close\s+to)\s+(\d{1,2})\s+years/gi,
+    /(\d{1,2})\+\s*years/gi,
+    /(\d{1,2})\s+years?\s+(?:of\s+)?(?:experience|professional\s+experience|work\s+experience|industry\s+experience|career)/gi,
+    /(?:with|having|brings?|possess(?:es|ing)?)\s+(?:more\s+than\s+|over\s+)?(\d{1,2})\s+years/gi,
+    /track\s+record\s+(?:of\s+)?(?:more\s+than\s+|over\s+)?(\d{1,2})\s+years/gi,
+    />\s*(\d{1,2})\s+years/gi,
   ];
 
   let maxYears = 0;
@@ -860,7 +862,7 @@ function extractExplicitYearsTest(resumeText: string): number {
     let match;
     while ((match = pattern.exec(resumeText)) !== null) {
       const years = parseInt(match[1], 10);
-      if (years > 0 && years <= 50 && years > maxYears) {
+      if (years >= 5 && years <= 50 && years > maxYears) {
         maxYears = years;
       }
     }
@@ -903,17 +905,27 @@ function simulateMultiSourceYears(
     const earliestWorkYear = Math.min(...workYears);
     const calculatedYears = currentYear - earliestWorkYear;
     if (calculatedYears > 0 && calculatedYears <= 50) {
-      // Boost confidence if regex finds substantially more experience than Claude
+      // Boost confidence when regex and Claude disagree significantly (either direction)
       const claudeEstimate = yearEstimates.find(e => e.source === 'claude-earliest-year');
-      const regexConfidence = (claudeEstimate && calculatedYears > claudeEstimate.value + 5) ? 3 : 2;
+      const bigDisagreement = claudeEstimate && Math.abs(calculatedYears - claudeEstimate.value) > 5;
+      const regexConfidence = bigDisagreement ? 3 : 2;
       yearEstimates.push({ value: calculatedYears, source: 'regex-work-years', confidence: regexConfidence });
     }
   }
 
-  // RESOLUTION: Pick highest confidence, on tie prefer larger
+  // RESOLUTION: Highest confidence wins. On ties, prefer regex (education-aware)
+  const sourcePriority: Record<string, number> = {
+    'regex-work-years': 3,
+    'explicit-text': 2,
+    'claude-earliest-year': 1,
+    'claude-years': 0,
+  };
   if (yearEstimates.length > 0) {
     yearEstimates.sort((a, b) => {
       if (b.confidence !== a.confidence) return b.confidence - a.confidence;
+      const aPriority = sourcePriority[a.source] ?? 0;
+      const bPriority = sourcePriority[b.source] ?? 0;
+      if (bPriority !== aPriority) return bPriority - aPriority;
       return b.value - a.value;
     });
     return { finalYears: yearEstimates[0].value, source: yearEstimates[0].source };
@@ -954,8 +966,29 @@ Bachelor of Science in Pharmacy, University of Indonesia, 1998`,
     claudeResponse: { yearsExperience: 37, earliestEmploymentYear: 1989 },
     resumeText: educationExclusionTests[0].resumeText,
     expectedMin: 27,
-    expectedMax: 37,
-    note: 'claude-earliest-year (conf=3) gives 37; regex (conf=2) gives 29; claude-earliest wins',
+    expectedMax: 29,
+    note: 'Tie at conf=3: regex-work-years (priority=3) beats claude-earliest (priority=1) → 29',
+  },
+  {
+    name: 'Fiona ACTUAL: "more than 20 years" in summary, work starts 2006',
+    claudeResponse: { yearsExperience: 37, earliestEmploymentYear: 1989 },
+    resumeText: `PROFESSIONAL SUMMARY
+A seasoned sales, marketing and business management professional in IVD field for more than 20 years (3 years general management and >17 years sales & marketing experience)
+
+EDUCATION & Courses
+Masters of Business Administration (with Distinction)
+University of New Castle, Australia
+Bachelor of Applied Science (Medical Laboratory Science)
+Queensland University of Technology, Australia
+
+WORK EXPERIENCE
+Jan 2019 - present  Senior Director & General Manager, Asean South, Biomerieux
+Mar 2015 - Dec 2018  Business Manager, Biomerieux Singapore
+2009 - 2014  Regional Product Manager, Asia Pacific, Haemonetics
+2006 - 2008  Marketing Manager, South East Asia, GE Healthcare`,
+    expectedMin: 20,
+    expectedMax: 20,
+    note: 'explicit-text (conf=4) returns 20; regex gives 20; both agree',
   },
   {
     name: 'Normal case: Claude and regex agree (20 years)',

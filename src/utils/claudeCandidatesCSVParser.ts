@@ -42,6 +42,7 @@ interface SuccessProfileContext {
   motivations?: string[];
   painPoints?: string[];
   academicBackground?: { minDegree: string; preferredFields: string[]; certifications: string[] };
+  rawProfileText?: string;
 }
 
 // Simplified response format - much smaller JSON
